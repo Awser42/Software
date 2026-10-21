@@ -29,6 +29,7 @@ async function until(predicate,timeout=30000){const start=Date.now();let last;wh
 function freePort(){return new Promise((resolve,reject)=>{const server=net.createServer();server.once('error',reject);server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(error=>error?reject(error):resolve(port));});});}
 function debugEndpoint(port){return new Promise((resolve,reject)=>{const request=http.get({hostname:'127.0.0.1',port,path:'/json/version',timeout:1500},response=>{const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('error',reject);response.on('end',()=>{try{const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(response.statusCode!==200||!value.webSocketDebuggerUrl)throw new Error('Electron debugging endpoint is not ready');resolve(value.webSocketDebuggerUrl);}catch(error){reject(error);}});});request.on('timeout',()=>request.destroy(new Error('Electron debugging endpoint timed out')));request.on('error',reject);});}
 async function targetSnapshot(browser,port){const result={};try{result.httpTargets=await(await fetch(`http://127.0.0.1:${port}/json/list`,{signal:AbortSignal.timeout(3000)})).json();}catch(error){result.httpError=error.message;}if(browser){let session;try{result.pages=browser.contexts().map(context=>context.pages().map(page=>page.url()));session=await browser.newBrowserCDPSession();result.cdpTargets=(await session.send('Target.getTargets')).targetInfos;}catch(error){result.cdpError=error.message;}finally{await session?.detach().catch(()=>{});}}return result;}
+const isAppUrl=url=>typeof url==='string'&&url.startsWith('file:')&&new URL(url).pathname.endsWith('/index.html');
 async function inspectMainFailure(port){
   let socket;
   try{return await bounded((async()=>{
@@ -59,13 +60,28 @@ async function launchPortable(executable,data){
     await until(async()=>{if(spawnError)throw spawnError;if(child.exitCode!==null)throw new Error(`Portable launcher exited before the UI opened (${child.exitCode}). ${output}`);return debugEndpoint(port);},90000);
     launch.targetsBeforeConnect=await targetSnapshot(null,port);
     stage('launch-'+launch.number+'-debug-ready',{targets:launch.targetsBeforeConnect.httpTargets});
+    // The debugging socket can be available before Electron has navigated its
+    // initial blank target. Attach after the actual app target exists, so CDP
+    // maps the final renderer to its context on both baseline and update boots.
+    stage('launch-'+launch.number+'-waiting-native-app-target');
+    await until(async()=>{launch.targetsReady=await targetSnapshot(null,port);return launch.targetsReady.httpTargets?.some(target=>isAppUrl(target.url));},30000);
+    stage('launch-'+launch.number+'-native-app-target-ready',{targets:launch.targetsReady.httpTargets});
     // Electron can expose native window targets as "other" on Windows. This
     // affects only this test's CDP attachment, never the application process.
     process.env.PW_CHROMIUM_ATTACH_TO_OTHER='1';
-    browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`,{timeout:30000});
-    launch.targetsAfterConnect=await targetSnapshot(browser,port);
-    launch.pages=browser.contexts().flatMap(context=>context.pages()).map(page=>page.url());stage('launch-'+launch.number+'-cdp-connected',{pages:launch.pages});
-    const page=await until(()=>browser.contexts().flatMap(context=>context.pages()).find(candidate=>candidate.url().startsWith('file:')&&new URL(candidate.url()).pathname.endsWith('/index.html')),30000);
+    let page;launch.connections=[];
+    for(let attempt=1;attempt<=3&&!page;attempt++){
+      browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`,{timeout:30000});
+      const connected=await targetSnapshot(browser,port);launch.connections.push({attempt,...connected});launch.targetsAfterConnect=connected;
+      launch.pages=browser.contexts().flatMap(context=>context.pages()).map(candidate=>candidate.url());stage('launch-'+launch.number+'-cdp-connected',{attempt,pages:launch.pages});
+      try{page=await until(()=>browser.contexts().flatMap(context=>context.pages()).find(candidate=>isAppUrl(candidate.url())),5000);}catch(error){
+        launch.connections.at(-1).afterWait=await targetSnapshot(browser,port);
+        if(attempt===3)throw error;
+        // Closing a connectOverCDP connection detaches only this test client;
+        // the independently launched portable process and its UI stay intact.
+        await browser.close();browser=null;await pause(250);
+      }
+    }
     page.on('pageerror',error=>{(launch.pageErrors||=[]).push(error.message);});
     stage('launch-'+launch.number+'-waiting-for-link-cells',{url:page.url()});
     await page.waitForSelector('.link-url',{timeout:30000});

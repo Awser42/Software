@@ -93,6 +93,7 @@ jobs:
           name: practical-test-evidence
           path: test-results/
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
           compression-level: 0
