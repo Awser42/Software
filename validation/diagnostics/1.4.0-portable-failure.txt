@@ -1,12 +1,28 @@
 ##[group]Run node test/portable.e2e.js
-2026-10-21T09:45:00.8107838Z node test/portable.e2e.js
-2026-10-21T09:45:00.8182733Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
-2026-10-21T09:45:00.8183126Z env:
-2026-10-21T09:45:00.8183387Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
-2026-10-21T09:45:00.8183714Z ##[endgroup]
-2026-10-21T09:45:53.7742174Z Error: Portable acceptance timed out
-2026-10-21T09:45:53.7743204Z     at until (D:\a\Software\Software\test\portable.e2e.js:17:217)
-2026-10-21T09:45:53.7743772Z     at async launchPortable (D:\a\Software\Software\test\portable.e2e.js:30:16)
-2026-10-21T09:45:53.7744497Z     at async D:\a\Software\Software\test\portable.e2e.js:54:14
-2026-10-21T09:45:53.8824944Z ##[error]Process completed with exit code 1.
-2026-10-21T09:45:53.9027989Z 
+2026-10-21T10:03:47.7069167Z node test/portable.e2e.js
+2026-10-21T10:03:47.7144154Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T10:03:47.7144564Z env:
+2026-10-21T10:03:47.7144853Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
+2026-10-21T10:03:47.7145163Z ##[endgroup]
+2026-10-21T10:03:48.4977206Z PORTABLE_STAGE {"name":"launch-1-spawn","port":57277,"inspectorPort":57278}
+2026-10-21T10:04:13.0336288Z PORTABLE_STAGE {"name":"launch-1-debug-ready","targets":[{"description":"","devtoolsFrontendUrl":"/devtools/inspector.html?ws=127.0.0.1:57277/devtools/page/CCDF7D22E0A30B51E01E82B1690CED9E","id":"CCDF7D22E0A30B51E01E82B1690CED9E","title":"","type":"page","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:57277/devtools/page/CCDF7D22E0A30B51E01E82B1690CED9E"}]}
+2026-10-21T10:04:13.1828216Z PORTABLE_STAGE {"name":"launch-1-cdp-connected","pages":["file:///C:/Users/RUNNER~1/AppData/Local/Temp/3L03BumjcbeKa9dVJcIc1ylJxvn/resources/app.asar/src/index.html"]}
+2026-10-21T10:04:13.1831428Z PORTABLE_STAGE {"name":"launch-1-waiting-for-link-cells","url":"file:///C:/Users/RUNNER~1/AppData/Local/Temp/3L03BumjcbeKa9dVJcIc1ylJxvn/resources/app.asar/src/index.html"}
+2026-10-21T10:04:13.3083644Z PORTABLE_STAGE {"name":"launch-1-ui-ready"}
+2026-10-21T10:04:13.3084661Z PORTABLE_STAGE {"name":"baseline-initial-ipc"}
+2026-10-21T10:04:13.3388729Z PORTABLE_STAGE {"name":"baseline-settings-saved"}
+2026-10-21T10:04:13.3389334Z PORTABLE_STAGE {"name":"launch-1-closing"}
+2026-10-21T10:04:13.9118869Z PORTABLE_STAGE {"name":"launch-1-closed"}
+2026-10-21T10:04:13.9123379Z PORTABLE_STAGE {"name":"build-future-code-update","futureVersion":"1.4.1"}
+2026-10-21T10:04:14.0014959Z Code-only update: AliExpress-Product-Archiver-1.4.1-Code-update.zip (64488 bytes); Chromium and Electron excluded.
+2026-10-21T10:04:14.0022501Z PORTABLE_STAGE {"name":"stage-future-code-update"}
+2026-10-21T10:04:14.0437564Z PORTABLE_STAGE {"name":"launch-2-spawn","port":57446,"inspectorPort":57447}
+2026-10-21T10:04:32.9040455Z PORTABLE_STAGE {"name":"launch-2-debug-ready","targets":[{"description":"","devtoolsFrontendUrl":"/devtools/inspector.html?ws=127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987","id":"8443A6C51A3751AF21AEB5413E1FE987","title":"","type":"page","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987"}]}
+2026-10-21T10:04:32.9339829Z PORTABLE_STAGE {"name":"launch-2-cdp-connected","pages":[]}
+2026-10-21T10:05:04.9726443Z PORTABLE_FAILURE {"stage":"launch-2-cdp-connected","error":{"name":"Error","message":"Portable acceptance timed out","stack":"Error: Portable acceptance timed out\n    at until (D:\\a\\Software\\Software\\test\\portable.e2e.js:28:217)\n    at async launchPortable (D:\\a\\Software\\Software\\test\\portable.e2e.js:68:16)\n    at async D:\\a\\Software\\Software\\test\\portable.e2e.js:115:14"},"launch":{"number":2,"port":57446,"inspectorPort":57447,"startedAt":"2026-10-21T10:04:14.043Z","pid":5700,"targetsBeforeConnect":{"httpTargets":[{"description":"","devtoolsFrontendUrl":"/devtools/inspector.html?ws=127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987","id":"8443A6C51A3751AF21AEB5413E1FE987","title":"","type":"page","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987"}]},"targetsAfterConnect":{"httpTargets":[{"description":"","devtoolsFrontendUrl":"/devtools/inspector.html?ws=127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987","id":"8443A6C51A3751AF21AEB5413E1FE987","title":"","type":"page","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987"}],"pages":[[]],"cdpTargets":[{"targetId":"8443A6C51A3751AF21AEB5413E1FE987","type":"page","title":"","url":"","attached":true,"canAccessOpener":false,"browserContextId":"3C34C08D2BA0085662874C63680125B2"}]},"pages":[],"output":"","targetsAtFailure":{"httpTargets":[{"description":"","devtoolsFrontendUrl":"/devtools/inspector.html?ws=127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987","id":"8443A6C51A3751AF21AEB5413E1FE987","title":"AliExpress Product Archiver","type":"page","url":"file:///C:/Users/RUNNER~1/AppData/Local/Temp/portable-acceptance-8ayMAZ/code-updates/v1.4.1-b26f4c2307d7/src/index.html","webSocketDebuggerUrl":"ws://127.0.0.1:57446/devtools/page/8443A6C51A3751AF21AEB5413E1FE987"}],"pages":[[]],"cdpTargets":[{"targetId":"8443A6C51A3751AF21AEB5413E1FE987","type":"page","title":"AliExpress Product Archiver","url":"file:///C:/Users/RUNNER~1/AppData/Local/Temp/portable-acceptance-8ayMAZ/code-updates/v1.4.1-b26f4c2307d7/src/index.html","attached":true,"canAccessOpener":false,"browserContextId":"3C34C08D2BA0085662874C63680125B2"}]},"mainAtFailure":{"appPath":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\3L03BumjcbeKa9dVJcIc1ylJxvn\\resources\\app.asar","ready":true,"userData":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\portable-acceptance-8ayMAZ","mainModule":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\3L03BumjcbeKa9dVJcIc1ylJxvn\\resources\\app.asar\\src\\bootstrap.js","executable":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\3L03BumjcbeKa9dVJcIc1ylJxvn\\AliExpress Product Archiver.exe","portableFile":"D:\\a\\Software\\Software\\dist\\AliExpress-Product-Archiver-1.4.0-win-x64.exe","bootstrap":{"version":"1.4.1","directory":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\portable-acceptance-8ayMAZ\\code-updates\\v1.4.1-b26f4c2307d7","rollbackReason":null},"windows":[{"id":1,"visible":true,"destroyed":false,"url":"file:///C:/Users/RUNNER~1/AppData/Local/Temp/portable-acceptance-8ayMAZ/code-updates/v1.4.1-b26f4c2307d7/src/index.html","loading":false}]}},"failurePages":[],"screenshot":"portable-failure.png"}
+2026-10-21T10:05:05.4501829Z Error: Portable acceptance timed out
+2026-10-21T10:05:05.4502428Z     at until (D:\a\Software\Software\test\portable.e2e.js:28:217)
+2026-10-21T10:05:05.4503098Z     at async launchPortable (D:\a\Software\Software\test\portable.e2e.js:68:16)
+2026-10-21T10:05:05.4503793Z     at async D:\a\Software\Software\test\portable.e2e.js:115:14
+2026-10-21T10:05:05.5606719Z ##[error]Process completed with exit code 1.
+2026-10-21T10:05:05.5848720Z 
