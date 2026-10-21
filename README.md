@@ -82,17 +82,17 @@ npm ci
 node node_modules/electron/install.js
 npx playwright install chromium
 npm run bundle:chromium
-npm exec -- electron-builder --win --x64 --dir
+npm exec -- electron-builder --win --x64 --dir --publish never
 node scripts/verify-package.js
 node test/ui.e2e.js
 node test/packaged.e2e.js
 npm run build:update
-npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked
+npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked --publish never
 node test/installer.e2e.js
 ```
 
 Use `E2E_BUNDLED=1` for the desktop test to exercise the shipped browser; set it in your shell before running that test. `npm run build:win` downloads the pinned Windows Chromium and builds Setup directly. Browser binaries are generated resources, not committed to Git.
 
-The GitHub Windows workflow performs fresh unit, 30-product desktop, packaged EXE and actual installer acceptance before publishing. Installer acceptance silently installs per user, checks the actual HKCU uninstall registration, launches the installed app to verify Excel/JPEG and a synthetic future code update, invokes the real uninstaller and confirms its application files/registration disappear while separate exports remain. Native Windows minimizes/restores Chromium and tests background/tray behavior. These results are separate from Linux tests.
+The GitHub Windows workflow requires passing unit, 30-product desktop, packaged EXE and actual installer acceptance before publishing. A distribution-test retry can reuse completed batch/Setup artifacts only after Git and authenticated job records verify unchanged application, dependency, browser and fixture inputs. Installed source/browser bytes and actual installed export/update/uninstall checks still run again. Installer acceptance silently installs per user, checks the actual HKCU uninstall registration, launches the installed app to verify Excel/JPEG and a synthetic future code update, invokes the real uninstaller and confirms its application files/registration disappear while separate exports remain. Native Windows minimizes/restores Chromium and tests background/tray behavior. These results are separate from Linux tests.
 
 `Live-product-check.json` records the anonymous live AliExpress attempt. A manual-login/verification result does not establish live fields or account-specific prices. No supplied real account session is present in fixtures or CI. See [VALIDATION.md](VALIDATION.md) for recorded results and their limits.

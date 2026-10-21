@@ -4,7 +4,7 @@ const crypto=require('node:crypto');
 const assert=require('node:assert/strict');
 const asar=require('@electron/asar');
 (async()=>{
- const root=path.resolve(__dirname,'../dist/win-unpacked/resources');
+ const root=process.argv[2]?path.resolve(process.argv[2]):path.resolve(__dirname,'../dist/win-unpacked/resources');
  for(const name of await fs.readdir(path.resolve(__dirname,'../src')))assert.deepEqual(asar.extractFile(path.join(root,'app.asar'),'src/'+name),await fs.readFile(path.resolve(__dirname,'../src',name)),name);
  const manifest=JSON.parse(await fs.readFile(path.join(root,'chromium/bundle.json'),'utf8'));
  assert.equal(manifest.playwrightVersion,require('playwright/package.json').version);

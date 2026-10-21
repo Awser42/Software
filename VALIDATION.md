@@ -1,5 +1,20 @@
 # Validation report — filtered images, readable exports and small updates
 
+## Version 1.4.1 — Excel only, refreshed UI and Windows uninstall
+
+New product ZIPs contain only `product.xlsx` and `Images/*.jpg`; CSV generation was removed. Product Details retains observed title, URL, capture time, descriptions, features and specifications. Variations puts each observed variation name immediately beside its confirmed price, size and color, with title and matching image filenames. Long descriptions continue over labeled rows bounded by both text length and line count, preserving Unicode and complete text. Export format `product-xlsx-jpeg-v4` lets older-format links be captured again without deleting earlier ZIPs.
+
+The desktop interface now uses a light layout with workflow steps, distinct queue totals, clearer link cells and organized progress, Downloads and Settings. Background browser/tray controls remain. The Windows distribution is now an assisted per-user NSIS Setup installer with Start menu/desktop shortcuts and actual uninstall registration. Settings includes a fixed Windows app-management action. Separate product exports and the saved profile are preserved on uninstall. Existing portable EXEs are separate files; compatible code updates change their features but do not register them as installed apps.
+
+Local checks passed on 2026-10-21:
+
+- `npm test`: 61 passed, zero failures/skips, including Excel-only ZIP contents, exact individually observed prices, blank/stale prices, complete long descriptions, literal formula-like strings and recapture from version 1.4.0.
+- `bash scripts/test-ui-linux.sh`: real desktop 15/20/30-cell paste and 30-product streaming workflow passed. Its initial product plus batch generated 31 Excel-only ZIPs and 186 decoded JPEGs. Every workbook's observed title, expanded overview, independent seller content, variation names/prices, sizes, colors, features, specifications and image references matched the fixtures. No CSV was present. Manual login gate, folder/settings, pause/resume, retry, duplicates, previews and persistence passed.
+- An independent openpyxl read of an actual `makeArchive` output confirmed only product.xlsx, exact full long Unicode description/end marker, separate size prices $8.15/$6.40, source details, literal cells, widths/frozen headers and variation filtering. These are controlled fixture amounts, not live account prices.
+- The exact released 1.4.0 source/package and unchanged update loader were launched under real Electron with isolated user data, then upgraded using the current 1.4.1 code ZIP (65,083 bytes) through controlled transport. The older baseline reopened the new Excel-only UI, preserved timing/settings and marked startup healthy. This verifies the compatible source-loader update path; it is not a new Windows portable-binary run or live GitHub transport test.
+- Workflow YAML, JavaScript syntax and `git diff --check` passed. The code update excludes Chromium/Electron.
+
+Native Windows install/export/update/uninstall results and public delivery checks are recorded after the release workflow completes. The following reports belong to earlier releases.
 
 ## Version 1.4.0
 
