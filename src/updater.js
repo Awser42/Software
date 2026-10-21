@@ -1,0 +1,71 @@
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const https=require('node:https');
+const {createRequire}=require('node:module');
+const {unzipCode,codePath,hash,MAX_ZIP_BYTES,MAX_EXPANDED_BYTES,MAX_FILE_BYTES,MAX_FILES}=require('./update-zip');
+const REPOSITORY='Awser42/Software';
+const RELEASE_URL=`https://github.com/${REPOSITORY}/releases/latest`;
+const MANIFEST_URL=RELEASE_URL+'/download/update-manifest.json';
+const SCHEMA=1;
+const RUNTIME_KEY=Symbol.for('aliexpress.archiver.bootstrap');
+const versionPattern=/^(\d+)\.(\d+)\.(\d+)$/;
+const directoryPattern=/^v\d+\.\d+\.\d+-[a-f0-9]{12}$/;
+function compareVersions(a,b){const x=String(a).match(versionPattern),y=String(b).match(versionPattern);if(!x||!y)throw new Error('Unsupported app version.');for(let i=1;i<=3;i++){const d=Number(x[i])-Number(y[i]);if(d)return Math.sign(d);}return 0;}
+function codeLine(version){const match=String(version).match(versionPattern);if(!match)throw new Error('Unsupported app version.');return match[1]+'.'+match[2];}
+function runtimeFor(appPath,runtimeVersion=process.versions.electron){const baseRequire=createRequire(path.join(appPath,'package.json'));const pkg=baseRequire('./package.json');return {electron:runtimeVersion||pkg.devDependencies.electron,playwright:baseRequire('playwright/package.json').version,codeLine:codeLine(pkg.version),baseVersion:pkg.version};}
+function validateManifest(manifest,runtime) {
+  if(!manifest||manifest.schema!==SCHEMA||!versionPattern.test(manifest.version)||manifest.entry!=='src/main.js')throw new Error('Unsupported update manifest.');
+  if(!manifest.runtime||manifest.runtime.electron!==runtime.electron||manifest.runtime.playwright!==runtime.playwright||manifest.runtime.codeLine!==runtime.codeLine||codeLine(manifest.version)!==runtime.codeLine)throw Object.assign(new Error('This update needs a different browser or desktop runtime. Download the full app once.'),{code:'UPDATE_INCOMPATIBLE'});
+  if(manifest.asset!==`AliExpress-Product-Archiver-${manifest.version}-Code-update.zip`||!Number.isSafeInteger(manifest.bytes)||manifest.bytes<22||manifest.bytes>MAX_ZIP_BYTES||!/^[a-f0-9]{64}$/.test(manifest.sha256))throw new Error('Invalid update download information.');
+  if(!Array.isArray(manifest.files)||!manifest.files.length||manifest.files.length>MAX_FILES)throw new Error('Invalid update file list.');
+  const names=new Set();let total=0;
+  for(const file of manifest.files){if(!file||!codePath(file.path)||names.has(file.path)||!Number.isSafeInteger(file.bytes)||file.bytes<0||file.bytes>MAX_FILE_BYTES||!/^[a-f0-9]{64}$/.test(file.sha256))throw new Error('Unapproved update file.');names.add(file.path);total+=file.bytes;}
+  if(total>MAX_EXPANDED_BYTES||!['src/main.js','src/preload.js','src/index.html'].every(name=>names.has(name)))throw new Error('Update is incomplete or too large.');
+  return manifest;
+}
+function permittedDownload(url) {
+  if(url.protocol!=='https:'||url.username||url.password||url.port)return false;
+  if(url.hostname==='github.com')return url.pathname.startsWith(`/${REPOSITORY}/releases/`);
+  return ['release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com'].includes(url.hostname);
+}
+function fetchBytes(input,{limit=MAX_ZIP_BYTES,expectedBytes,onProgress}={},redirects=0) {
+  return new Promise((resolve,reject)=>{
+    let url;try{url=new URL(input);if(!permittedDownload(url)||redirects>5)throw new Error('Update download host or redirect was not approved.');}catch(error){reject(error);return;}
+    const request=https.get(url,{headers:{'User-Agent':'AliExpress-Product-Archiver-Updater','Accept':'application/octet-stream'},timeout:30000},response=>{
+      if([301,302,303,307,308].includes(response.statusCode)){response.resume();if(!response.headers.location){reject(new Error('Update redirect has no destination.'));return;}fetchBytes(new URL(response.headers.location,url),{limit,expectedBytes,onProgress},redirects+1).then(resolve,reject);return;}
+      if(response.statusCode!==200){response.resume();reject(new Error(response.statusCode===404?'No compatible small update is published yet.':`GitHub update download failed (HTTP ${response.statusCode}).`));return;}
+      const declared=Number(response.headers['content-length']);if(declared>limit||(expectedBytes&&declared&&declared!==expectedBytes)){response.destroy();reject(new Error('Update download size does not match its manifest.'));return;}
+      const chunks=[];let count=0;response.on('data',chunk=>{count+=chunk.length;if(count>limit||(expectedBytes&&count>expectedBytes)){response.destroy(new Error('Update download exceeded its size limit.'));return;}chunks.push(chunk);onProgress?.(count,expectedBytes||declared||0);});response.on('aborted',()=>reject(new Error('Update download was interrupted.')));response.on('error',reject);response.on('end',()=>{if(expectedBytes&&count!==expectedBytes){reject(new Error('Update download was incomplete.'));return;}resolve(Buffer.concat(chunks));});
+    });
+    request.on('timeout',()=>request.destroy(new Error('Update connection timed out. Retry when the connection is available.')));request.on('error',reject);
+  });
+}
+async function readJson(file){try{return JSON.parse(await fs.readFile(file,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}}
+async function atomicJson(file,value){await fs.mkdir(path.dirname(file),{recursive:true});const temp=file+'.'+process.pid+'.tmp';await fs.writeFile(temp,JSON.stringify(value,null,2)+'\n',{mode:0o600});try{await fs.rename(temp,file);}catch(error){if(process.platform==='win32'&&['EACCES','EPERM','EEXIST'].includes(error.code)){await fs.rm(file,{force:true});await fs.rename(temp,file);}else throw error;}finally{await fs.rm(temp,{force:true}).catch(()=>{});}}
+function updatePaths(userData){const root=path.join(userData,'code-updates');return {root,active:path.join(root,'active.json'),booting:path.join(root,'booting.json')};}
+function validPointer(pointer){return pointer&&typeof pointer==='object'&&directoryPattern.test(pointer.directory)&&versionPattern.test(pointer.version);}
+async function verifyInstalled(root,pointer,runtime) {
+  if(!validPointer(pointer))throw new Error('Invalid installed-update pointer.');
+  const directory=path.join(root,pointer.directory),manifest=validateManifest(await readJson(path.join(directory,'update-manifest.json')),runtime);
+  if(manifest.version!==pointer.version||pointer.directory!==`v${manifest.version}-${manifest.sha256.slice(0,12)}`)throw new Error('Installed-update identity does not match.');
+  const checked=new Set();for(const file of manifest.files){const parts=file.path.split('/');for(let i=0;i<parts.length;i++){const parent=path.join(directory,...parts.slice(0,i));if(checked.has(parent))continue;const stat=await fs.lstat(parent);if(!stat.isDirectory()||stat.isSymbolicLink())throw new Error('Installed update contains an unapproved directory link.');checked.add(parent);}const resolved=path.join(directory,...parts);const stat=await fs.lstat(resolved);if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==file.bytes||hash(await fs.readFile(resolved))!==file.sha256)throw new Error('Installed update failed its file integrity check.');}
+  return {directory,manifest};
+}
+async function rollbackPointer(paths,pointer,reason){const next={schema:SCHEMA,current:validPointer(pointer?.previous)?pointer.previous:null,previous:null,pending:false,rollbackReason:String(reason).slice(0,300)};await atomicJson(paths.active,next);await fs.rm(paths.booting,{force:true});return next;}
+async function selectStartup({userData,appPath,runtimeVersion}) {
+  const paths=updatePaths(userData),runtime=runtimeFor(appPath,runtimeVersion);let pointer,reason=null;
+  try{pointer=await readJson(paths.active);if(!pointer)return {runtime,version:runtime.baseVersion,paths,pointer:null,directory:null,rollbackReason:null};if(pointer.schema!==SCHEMA)throw new Error('Unsupported installed-update pointer.');if(pointer.pending){const booting=await readJson(paths.booting);if(booting?.directory===pointer.current?.directory){reason='The previous update did not finish starting; the previous app code was restored.';pointer=await rollbackPointer(paths,pointer,reason);}}if(!pointer.current)return {runtime,version:runtime.baseVersion,paths,pointer,directory:null,rollbackReason:reason||pointer.rollbackReason||null};
+    const installed=await verifyInstalled(paths.root,pointer.current,runtime);if(pointer.pending)await atomicJson(paths.booting,{directory:pointer.current.directory,startedAt:new Date().toISOString()});return {runtime,version:pointer.current.version,paths,pointer,directory:installed.directory,manifest:installed.manifest,rollbackReason:reason||null};
+  }catch(error){reason=`Installed update was not started: ${error.message}`;pointer=await rollbackPointer(paths,pointer,reason);if(pointer.current){try{const installed=await verifyInstalled(paths.root,pointer.current,runtime);return {runtime,version:pointer.current.version,paths,pointer,directory:installed.directory,manifest:installed.manifest,rollbackReason:reason};}catch{await rollbackPointer(paths,null,reason);}}
+    return {runtime,version:runtime.baseVersion,paths,pointer:null,directory:null,rollbackReason:reason};}
+}
+async function markStartupHealthy(){const context=globalThis[RUNTIME_KEY];if(!context?.paths||!context.pointer?.pending)return;const pointer=await readJson(context.paths.active);if(pointer?.current?.directory!==context.pointer.current.directory)return;await atomicJson(context.paths.active,{...pointer,pending:false});await fs.rm(context.paths.booting,{force:true});context.pointer.pending=false;}
+function activeCodeVersion(fallback){return globalThis[RUNTIME_KEY]?.version||fallback;}
+class UpdateManager {
+  constructor({appPath,userData,runtimeVersion,onProgress=()=>{},transport=fetchBytes}){this.appPath=appPath;this.userData=userData;this.runtime=runtimeFor(appPath,runtimeVersion);this.onProgress=onProgress;this.transport=transport;this.manifest=null;this.busy=false;this.state={status:'idle',currentVersion:activeCodeVersion(this.runtime.baseVersion),availableVersion:null,totalBytes:0,downloadedBytes:0,message:'Check GitHub for small app updates. Chromium stays installed.',releaseUrl:RELEASE_URL,canRestart:false};}
+  info(){return {...this.state};}
+  publish(values){Object.assign(this.state,values);this.onProgress(this.info());return this.info();}
+  async check(){if(this.busy)throw new Error('An update operation is already running.');if(this.state.status==='ready')return this.info();this.busy=true;this.publish({status:'checking',message:'Checking GitHub for a compatible small update.',downloadedBytes:0});try{const bytes=await this.transport(MANIFEST_URL,{limit:128*1024});let manifest;try{manifest=JSON.parse(bytes.toString('utf8'));}catch{throw new Error('GitHub returned an invalid update manifest.');}validateManifest(manifest,this.runtime);this.manifest=manifest;if(compareVersions(manifest.version,this.state.currentVersion)<=0)return this.publish({status:'up-to-date',availableVersion:null,totalBytes:0,message:'Your app code is up to date.'});return this.publish({status:'available',availableVersion:manifest.version,totalBytes:manifest.bytes,message:`Version ${manifest.version} is available as a small app-code update.`});}catch(error){this.publish({status:error.code==='UPDATE_INCOMPATIBLE'?'incompatible':'error',message:error.message});throw error;}finally{this.busy=false;}}
+  async download(){if(this.busy)throw new Error('An update operation is already running.');if(this.state.status==='ready')return this.info();if(!this.manifest||this.state.status!=='available')throw new Error('Check for an available update first.');const manifest=this.manifest;validateManifest(manifest,this.runtime);this.busy=true;let staging;this.publish({status:'downloading',downloadedBytes:0,totalBytes:manifest.bytes,message:'Downloading app code. Chromium and Electron will not be downloaded again.'});try{const url=`https://github.com/${REPOSITORY}/releases/download/v${manifest.version}/${manifest.asset}`;const bytes=await this.transport(url,{limit:MAX_ZIP_BYTES,expectedBytes:manifest.bytes,onProgress:(downloadedBytes,totalBytes)=>this.publish({downloadedBytes,totalBytes})});if(bytes.length!==manifest.bytes||hash(bytes)!==manifest.sha256)throw new Error('Update download failed its SHA-256 integrity check.');const entries=unzipCode(bytes,manifest.files);const paths=updatePaths(this.userData);await fs.mkdir(paths.root,{recursive:true});staging=await fs.mkdtemp(path.join(paths.root,'.staging-'));for(const [name,body] of entries){const target=path.join(staging,...name.split('/'));await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,body,{flag:'wx',mode:0o600});}await fs.writeFile(path.join(staging,'update-manifest.json'),JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});const directory=`v${manifest.version}-${manifest.sha256.slice(0,12)}`,installed={directory,version:manifest.version};const destination=path.join(paths.root,directory);try{await fs.rename(staging,destination);staging=null;}catch(error){if(!['EEXIST','ENOTEMPTY','EPERM'].includes(error.code))throw error;await verifyInstalled(paths.root,installed,this.runtime);await fs.rm(staging,{recursive:true,force:true});staging=null;}await verifyInstalled(paths.root,installed,this.runtime);let previous=await readJson(paths.active);await atomicJson(paths.active,{schema:SCHEMA,current:installed,previous:validPointer(previous?.current)?previous.current:null,pending:true});await fs.rm(paths.booting,{force:true});return this.publish({status:'ready',downloadedBytes:manifest.bytes,canRestart:true,message:`Version ${manifest.version} is ready. Restart when your product queue has finished.`});}catch(error){this.publish({status:'error',message:error.message,canRestart:false});throw error;}finally{if(staging)await fs.rm(staging,{recursive:true,force:true}).catch(()=>{});this.busy=false;}}
+}
+module.exports={UpdateManager,validateManifest,runtimeFor,compareVersions,fetchBytes,permittedDownload,selectStartup,verifyInstalled,rollbackPointer,updatePaths,atomicJson,markStartupHealthy,activeCodeVersion,RUNTIME_KEY,REPOSITORY,RELEASE_URL,MANIFEST_URL,SCHEMA};

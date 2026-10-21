@@ -3,6 +3,9 @@ const fsp = fs.promises;
 const path = require('node:path');
 const archiver = require('archiver');
 const crypto = require('node:crypto');
+const {imageQuality} = require('./media-quality');
+const {writeSpreadsheet} = require('./spreadsheet');
+const {readArchivePreview} = require('./archive-preview');
 
 const safeName = v => String(v || 'product').normalize('NFKC').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 110) || 'product';
 const csvCell = v => { let s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); if (/^[=+@\-\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
@@ -49,8 +52,8 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-csv-jpeg-v2';
-const COLUMNS=['Title','Description','Seller Description','Variation','Price','Size','Color','Features','Specifications','Images'];
+const EXPORT_FORMAT='product-csv-xlsx-jpeg-v3';
+const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
 function variantOptions(product,variant) {
   if (variant?.observedOptions?.length) return variant.observedOptions;
@@ -96,15 +99,21 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
   const name = `${safeName(product.title)}-${id}`;
   const stage = await fsp.mkdtemp(path.join(output, '.archive-'));
   const tempZip = path.join(output, `.${name}-${crypto.randomUUID()}.zip.partial`);
-  const files = []; let preview = null;
+  const files = []; let preview = null, previewRank = Infinity, filteredImages = 0;
   product.assets = []; product.warnings ||= [];
   try {
     // Prioritize variation names when the same URL is also a gallery image.
     const variants = (product.properties || []).flatMap(p => (p.values || []).filter(v => v.image).map(v => ({url:v.image,kind:'variation', label:`variation-${safeName([p.name,v.name].filter(Boolean).join('-'))}`})));
     const measuredVariants=(product.variations||[]).flatMap(v=>(v.observedImageUrls||[]).map(url=>({url,kind:'variation',label:`variation-${safeName(v.name)}`})));
     const images = [...variants,...measuredVariants, ...(product.images || []).map(url=>({url,kind:'main',label:'main'})), ...(product.descriptionImages || []).map(url=>({url,kind:'description',label:'description'}))];
-    const attempted = new Set(); let index = 0;
+    const attempted = new Set(), contentFiles = new Map(), pixelFiles = new Map(); let index = 0;
     const imageHost = url => /^https?:$/.test(url.protocol) && /(^|\.)(alicdn\.com|aliexpress-media\.com|aliexpress\.(com|us))$/i.test(url.hostname);
+    const choosePreview = (url, kind, bytes, info) => {
+      const galleryIndex = (product.images || []).indexOf(url);
+      const rank = galleryIndex >= 0 ? galleryIndex : kind === 'main' ? 0 : kind === 'variation' ? 100000 : 200000;
+      const candidate = info?.preview || bytes?.preview || (bytes?.length < 2*1024*1024 ? `data:image/jpeg;base64,${bytes.toString('base64')}` : null);
+      if (candidate && rank < previewRank) {preview = candidate; previewRank = rank;}
+    };
     for (const {url,label,kind} of images) {
       await checkpoint();
       if (attempted.has(url)) continue;
@@ -120,22 +129,46 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
         if (Number(headers['content-length']) > 30*1024*1024) throw new Error('Image exceeds 30 MB');
         const source = await response.body();
         if (source.length > 30*1024*1024) throw new Error('Image exceeds 30 MB');
+        const contentHash = crypto.createHash('sha256').update(source).digest('hex');
+        const previous = contentFiles.get(contentHash);
+        if (previous) {
+          if (previous.status === 'filtered') {product.assets.push({...previous,url});filteredImages++;continue;}
+          const alias = {...previous,url,kind,duplicate:true}; product.assets.push(alias);
+          choosePreview(url,kind,null,previous);continue;
+        }
         if (!encodeJpeg) throw new Error('JPEG codec is unavailable; image was not renamed');
         const bytes = await encodeJpeg(source, mime);
         if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new Error('Image codec did not produce JPEG bytes');
+        const quality = imageQuality(bytes);
+        if (!quality.accepted) {
+          const asset = {url,file:null,kind,status:'filtered',width:quality.width,height:quality.height,reason:quality.reason};
+          product.assets.push(asset); contentFiles.set(contentHash,asset);filteredImages++;continue;
+        }
+        const pixelHash = bytes.pixelHash || crypto.createHash('sha256').update(bytes).digest('hex');
+        const matching = pixelFiles.get(pixelHash);
+        if (matching) {
+          const alias = {...matching,url,kind,duplicate:true}; product.assets.push(alias);contentFiles.set(contentHash,alias);
+          choosePreview(url,kind,bytes,alias);continue;
+        }
         const file = `Images/${label}-${String(++index).padStart(3, '0')}.jpg`;
         await fsp.mkdir(path.join(stage, 'Images'), {recursive:true});
         await fsp.writeFile(path.join(stage,file),bytes);
         files.push(file);
-        product.assets.push({url,file,kind,status:'downloaded',bytes:bytes.length});
-        if (!preview && bytes.length < 2*1024*1024) preview = `data:image/jpeg;base64,${bytes.toString('base64')}`;
+        const asset = {url,file,kind,status:'downloaded',bytes:bytes.length,width:quality.width,height:quality.height,preview:bytes.preview||null};
+        product.assets.push(asset);contentFiles.set(contentHash,asset);pixelFiles.set(pixelHash,asset);
+        choosePreview(url,kind,bytes,asset);
       } catch (error) {
         product.assets.push({url,file:null,status:'failed',error:error.message});
         product.warnings.push(`Image unavailable: ${url} (${error.message})`);
       }
     }
+    if (!String(product.descriptionText || '').trim() && !String(product.sellerDescriptionText || '').trim()) {
+      const warning = 'Description text was not exposed by the page. The description cells were left blank; image content was not invented as text.';
+      if (!product.warnings.includes(warning)) product.warnings.push(warning);
+    }
     const rows=productRows(product);
     await fsp.writeFile(path.join(stage,'product.csv'),csv(rows,COLUMNS));
+    await writeSpreadsheet(path.join(stage,'product.xlsx'),product,rows);
     await new Promise((resolve,reject) => {
       const dest = fs.createWriteStream(tempZip,{flags:'wx'}); const zip = archiver('zip',{zlib:{level:6}});
       dest.on('close',resolve); dest.on('error',reject); zip.on('error',reject); zip.on('warning',reject);
@@ -146,9 +179,9 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       try { await fsp.copyFile(tempZip,finalPath,fs.constants.COPYFILE_EXCL); break; }
       catch (e) { if (e.code !== 'EEXIST') throw e; finalPath=path.join(output,`${name}-${i}.zip`); }
     }
-    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,preview,capturedAt:product.capturedAt,exportFormat:EXPORT_FORMAT,rowCount:rows.length,descriptionPreview:(product.descriptionText||'').slice(0,1000),sellerDescriptionPreview:(product.sellerDescriptionText||'').slice(0,600),specificationCount:(product.specifications||[]).length,featureCount:(product.features||[]).length,detailsPreview:rows.slice(0,5).map(r=>({title:r.Title,variation:r.Variation,price:r.Price,size:r.Size,color:r.Color})),priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
+    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,filteredImages,preview,capturedAt:product.capturedAt,exportFormat:EXPORT_FORMAT,rowCount:rows.length,descriptionPreview:(product.descriptionText||'').slice(0,1000),sellerDescriptionPreview:(product.sellerDescriptionText||'').slice(0,600),descriptionFull:(product.descriptionText||'').slice(0,50000),sellerDescriptionFull:(product.sellerDescriptionText||'').slice(0,50000),descriptionTruncated:(product.descriptionText||'').length>50000,sellerDescriptionTruncated:(product.sellerDescriptionText||'').length>50000,featuresPreview:lines(product.features),specificationsPreview:lines(product.specifications),specificationCount:(product.specifications||[]).length,featureCount:(product.features||[]).length,detailsPreview:rows.slice(0,5).map(r=>({title:r.Title,variation:r.Variation,price:r.Price,size:r.Size,color:r.Color})),priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
   } finally {
     await fsp.rm(stage,{recursive:true,force:true}); await fsp.rm(tempZip,{force:true});
   }
 }
-module.exports = {makeArchive, productKey, normalizedUrl, safeName, csv};
+module.exports = {makeArchive, productKey, normalizedUrl, safeName, csv, COLUMNS, EXPORT_FORMAT, readArchivePreview};

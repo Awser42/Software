@@ -1,4 +1,26 @@
-# Validation report — complete product fields and 30-link grid
+# Validation report — filtered images, readable exports and small updates
+
+
+## Version 1.4.0
+
+This revision addresses the supplied Christmas-tree export ZIP (product ID `3256812916711444`). Inspection found a valid title and two priced size rows, empty Description and Seller Description, six 1200×1200 product images, unrelated 600×600 graphic content, a 48×48 play icon and a 60×60 star. The image files themselves were intact; the app had also forced thumbnail previews into 360×240, distorting square originals.
+
+Implemented behavior:
+
+- Semantic UI/avatar exclusion and specific product-gallery sources, decoded tiny-image filtering, content deduplication, original JPEG preservation and aspect-correct main-image previews. Recent earlier card previews can be repaired from existing ZIPs without rewriting those exports.
+- Broader native overview and lazy Description-tab capture, observed inline description HTML and endpoint lists, independent seller content and frames. Missing text remains blank with explicit warnings; pictures and specifications are not turned into invented prose.
+- CSV columns place Title, Variation, Price, Size and Color together, followed by Description, Seller Description, Features, Specifications and Images. A companion formatted product.xlsx has Product Details and Variations sheets, widths, wrapping, frozen headers and filters.
+- One persistent headed Chromium session runs minimized by default; explicit Show/Hide controls preserve login, and manual verification pauses without forcing the browser forward. The app can keep processing in the Windows system tray.
+- The full 1.4.0 package adds a stable update loader. Subsequent compatible app-code updates download a small ZIP that omits Electron, Chromium and node_modules, with exact runtime checks, integrity checks, staging and failed-start recovery. Portable restart targets the outer launcher rather than its temporary extracted executable.
+
+Local validation passed on 2026-10-21:
+
+- `npm test`: 59 tests passed, zero failures or skips. This includes nine small-updater integrity/compatibility/rollback cases, real image decoding, 48/60-pixel icon filtering, description lazy tabs/inline modules, styled Excel XML, duplicate image aliases and bounded legacy-preview repair.
+- `bash scripts/test-ui-linux.sh`: passed. The 30-product streaming batch plus the initial product produced 31 ZIPs, all checked for the ten-column CSV, product.xlsx and six genuine 320×192 JPEGs (186 total). Per-product titles, seven expanded overview points, independent full seller DOM/endpoint/frame text and images, per-size visible fixture prices, sizes/colors/features/specifications and image paths matched. Manual Show/Hide commands reused the same profile; folder/settings, pause/resume, retry, duplicates and persistence passed.
+- The actual uploaded ZIP's original 48×48 play and 60×60 star JPEGs were rejected by the decoded-image filter. Other retained original JPEG bytes stayed unchanged. Its empty description cells could not be recovered from images or specifications and were not fabricated. The unrelated 600-pixel art is handled by source/DOM scoping, not a guessed pixel-content classification.
+- The companion workbook was independently loaded with openpyxl; its sheets, widths, wrapping, freezes, filters, literal formula-like strings and observed price text were valid.
+
+Linux dummy Xorg does not provide Windows tray/minimize behavior. Native Windows tests therefore separately assert actual minimized/normal Chromium states, tray/background continuation, packaged-code update startup and actual portable-wrapper update startup. Their completed results and public download checks are recorded after the GitHub run finishes. Earlier version reports below do not validate this revision.
 
 ## Version 1.3.0
 

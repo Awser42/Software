@@ -12,24 +12,37 @@ async function convertToJpeg(page, bytes, mime = '') {
     const bitmap = await createImageBitmap(new Blob([raw], {type}));
     try {
       if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > 64000000) throw new Error('Image dimensions exceed the 64 megapixel limit');
-      // A decoded original JPEG already has the requested encoding and keeps
-      // its original bytes without an unnecessary second lossy compression.
-      if (type === 'image/jpeg') return base64;
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, bitmap.width, bitmap.height);
       ctx.drawImage(bitmap, 0, 0);
-      const jpeg = await canvas.convertToBlob({type: 'image/jpeg', quality: 0.95});
-      return await new Promise((resolve, reject) => {
+      let pixelHash = null;
+      if (globalThis.crypto?.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', ctx.getImageData(0, 0, bitmap.width, bitmap.height).data);
+        pixelHash = `${bitmap.width}x${bitmap.height}:` + Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+      }
+      const blobBase64 = blob => new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onerror = () => reject(new Error('JPEG conversion failed'));
         reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.readAsDataURL(jpeg);
+        reader.readAsDataURL(blob);
       });
+      // Keep original JPEG bytes. Other formats are encoded only once at the
+      // original dimensions; the smaller card preview is a separate image.
+      const jpeg = type === 'image/jpeg' ? base64 : await blobBase64(await canvas.convertToBlob({type: 'image/jpeg', quality: 0.95}));
+      const scale = Math.min(1, 480 / bitmap.width, 360 / bitmap.height);
+      const thumbnail = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+      const previewContext = thumbnail.getContext('2d');
+      previewContext.fillStyle = '#fff'; previewContext.fillRect(0, 0, thumbnail.width, thumbnail.height);
+      previewContext.drawImage(bitmap, 0, 0, thumbnail.width, thumbnail.height);
+      const preview = 'data:image/jpeg;base64,' + await blobBase64(await thumbnail.convertToBlob({type: 'image/jpeg', quality: 0.9}));
+      return {jpeg, width: bitmap.width, height: bitmap.height, pixelHash, preview};
     } finally { bitmap.close(); }
   }, {base64: bytes.toString('base64'), mime});
-  const result = Buffer.from(encoded, 'base64');
+  const result = Buffer.from(encoded.jpeg, 'base64');
   if (result[0] !== 0xff || result[1] !== 0xd8 || result[2] !== 0xff) throw new Error('Image codec did not produce a JPEG');
+  result.width = encoded.width; result.height = encoded.height;
+  result.pixelHash = encoded.pixelHash; result.preview = encoded.preview;
   return result;
 }
 module.exports = {convertToJpeg};

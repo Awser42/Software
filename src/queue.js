@@ -1,6 +1,6 @@
 const fs = require('node:fs/promises');
 const {EventEmitter} = require('node:events');
-const {productKey, normalizedUrl} = require('./archive');
+const {productKey, normalizedUrl, EXPORT_FORMAT} = require('./archive');
 class Queue extends EventEmitter {
   constructor({extract, save = async () => {}, initial = {}}) {
     super(); this.extract = extract; this.save = save; this.items = initial.items || []; this.downloads = initial.downloads || [];
@@ -15,7 +15,7 @@ class Queue extends EventEmitter {
       const raw = input.trim(); if (!raw) continue;
       try {
         const id = productKey(raw); const url = normalizedUrl(raw);
-        const prior = this.downloads.find(d => d.productId === id && d.exportFormat === 'product-csv-jpeg-v2' && d.priceMode === 'visible-variation-v1' && d.path);
+        const prior = this.downloads.find(d => d.productId === id && d.exportFormat === EXPORT_FORMAT && d.priceMode === 'visible-variation-v1' && d.path);
         const exists = prior ? await fs.access(prior.path).then(() => true, () => false) : false;
         const queued = this.items.some(i => i.productId === id && ['pending','running','waiting'].includes(i.status));
         if (skipDuplicates && (exists || queued)) { results.push({url, status:'duplicate'}); continue; }

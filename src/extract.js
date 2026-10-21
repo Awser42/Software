@@ -43,16 +43,33 @@ function pageTools() {
     if (typeof value !== 'string' || !value.trim() || /^(?:null|undefined|#|about:blank)$/i.test(value.trim())) return '';
     try {const url = new URL(value,location.href); return /^https?:$/.test(url.protocol) ? url.href : '';} catch {return '';}
   };
-  const original = value => absolute(String(value || '').replace(/(\.(?:jpe?g|png|webp|avif))_\d+x\d+[^/?]*(?=\?|$)/i,'$1'));
+  const original = value => absolute(String(value || '').replace(/(\.(?:jpe?g|png|webp|avif))(?:_\d+x\d+[^/?]*|_Q\d+[^/?]*|_\.webp)(?=\?|$)/i,'$1'));
   const bestSrcset = value => (/^\s*(?:data|blob):/i.test(String(value || '')) ? [] : String(value || '').split(',')).map(part => {
     const match = part.trim().match(/^(\S+)(?:\s+(\d+(?:\.\d+)?)([wx]))?$/);
     return match ? {url:match[1],size:Number(match[2]) || 1} : null;
   }).filter(Boolean).sort((a,b) => b.size - a.size)[0]?.url || '';
+  const imageUrl = value => {
+    const url = original(value);
+    if (!url) return '';
+    try {
+      const parsed = new URL(url);
+      if (/^(?:g|assets|gw)\.alicdn\.com$/i.test(parsed.hostname) || /\.svg(?:$|[?#])/i.test(parsed.pathname) || /(?:^|[/_-])(?:icons?|sprites?|emojis?|favicon|loading|placeholder)(?:[/_.-]|$)/i.test(parsed.pathname)) return '';
+    } catch {return '';}
+    return url;
+  };
+  const decorativeImage = image => {
+    const tokens = [image.className,image.id,image.getAttribute('data-role'),image.getAttribute('data-testid')].join(' ');
+    if (/(?:^|[\s_-])(?:icon|rating|stars?|play|pause|video-button|spinner|loading|placeholder|watermark)(?:[\s_-]|$)/i.test(tokens)) return true;
+    if (image.closest('[class*="avatar"],[class*="Avatar"],[class*="user-photo"],[class*="userPhoto"],[class*="profile-photo"],[class*="store-logo"],[class*="storeLogo"],[class*="shop-logo"],svg,[class*="playIcon"],[class*="play-icon"],[class*="playButton"],[class*="play-button"],[class*="video--play"],[class*="slider--play"],[class*="rating--"],[class*="star-icon"],[class*="image--icon"],[class*="slider--icon"]')) return true;
+    const alt = normalize(image.getAttribute('alt') || image.getAttribute('aria-label'));
+    return /^(?:star|rating star|play|play video|pause|video play|loading|placeholder|zoom|close|next|previous)(?: icon| button)?$/i.test(alt);
+  };
   const imageOf = image => {
+    if (decorativeImage(image)) return '';
     const declared = image.getAttribute('src');
     const current = declared && !/^(?:null|undefined|#|about:blank)$/i.test(declared.trim()) ? image.currentSrc : '';
     const candidates = [image.getAttribute('data-original'),bestSrcset(image.getAttribute('data-srcset') || image.getAttribute('srcset')),image.getAttribute('data-src'),image.getAttribute('data-lazy-src'),current,declared];
-    return candidates.map(original).find(Boolean) || '';
+    return candidates.map(imageUrl).find(Boolean) || '';
   };
   const unique = values => [...new Set(values.filter(Boolean))];
   const title = () => {
@@ -63,7 +80,7 @@ function pageTools() {
     }
     return '';
   };
-  return {normalize,requestedId,excluded,visible,control,textOf,htmlOf,absolute,original,imageOf,unique,title};
+  return {normalize,requestedId,excluded,visible,control,textOf,htmlOf,absolute,original,imageUrl,decorativeImage,imageOf,unique,title};
 }
 
 // Embed this module's trusted helper in the function sent through Playwright.
@@ -81,10 +98,14 @@ function overviewInPage({expand}) {
     for (const icon of copy.querySelectorAll('svg,img,script,style,[aria-hidden="true"]')) icon.remove();
     return normalize(copy.textContent).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'').toLowerCase();
   };
+  const isOverviewHeading = value => /^(?:ai (?:overview|summary)(?: of (?:the )?(?:item|product))?|ai[- ]generated (?:overview|summary|description))$/i.test(value);
   const headings = [...document.querySelectorAll('h2,h3,h4,div,span,p,strong,b')]
-    .filter(element => /ai overview of item/i.test(element.textContent || '') && normalize(element.textContent).length < 180 && visible(element) && !excluded(element) && headingText(element) === 'ai overview of item');
+    .filter(element => /ai/i.test(element.textContent || '') && normalize(element.textContent).length < 180 && visible(element) && !excluded(element) && isOverviewHeading(headingText(element)));
+  for (const scope of document.querySelectorAll('[data-role="ai-overview"],[class*="seo-sellpoints"],[class*="seoSellpoints"],[class*="ai-overview"],[class*="aiOverview"]')) {
+    if (visible(scope) && !excluded(scope) && !headings.some(heading => scope.contains(heading)) && scope.children.length) headings.push(scope.firstElementChild);
+  }
   for (const heading of headings) {
-    let container = heading.parentElement;
+    let container = heading.matches('[data-role="ai-overview"],[class*="sellpoints"],[class*="ai-overview"]') ? heading : heading.parentElement;
     for (let depth = 0; container && depth < 8; depth++, container = container.parentElement) {
       if (['BODY','HTML','MAIN'].includes(container.tagName) || container.querySelector('h1,[class*="price-default--current"],[class*="sku-item--property"],#product-description,.product-description,[class*="description--detail"]')) break;
       if (!visible(container) || excluded(container)) continue;
@@ -103,7 +124,7 @@ function overviewInPage({expand}) {
       if (!points.length && native) {
         points = [...container.querySelectorAll('p,div')].filter(element => {
           const value = textOf(element);
-          return visible(element) && !disclaimer(element) && !control(element) && value.length >= 8 && headingText(element) !== 'ai overview of item' && !element.contains(heading) && ![...element.children].some(child => ['DIV','P','LI'].includes(child.tagName) && textOf(child).length >= 8);
+          return visible(element) && !disclaimer(element) && !control(element) && value.length >= 8 && !isOverviewHeading(headingText(element)) && !element.contains(heading) && ![...element.children].some(child => ['DIV','P','LI'].includes(child.tagName) && textOf(child).length >= 8);
         });
       }
       const features = unique(points.map(textOf).filter(value => /[\p{L}\p{N}]/u.test(value) && !/^(?:disclaimer\s*:|this content is generated by ai)/i.test(value)));
@@ -122,7 +143,14 @@ function overviewInPage({expand}) {
 
 async function captureOverview(page, {expand = true} = {}) {
   const args = {expand};
-  const initial = await evaluateWithTools(page,overviewInPage,args);
+  let initial = await evaluateWithTools(page,overviewInPage,args);
+  if (!initial) {
+    // Native shells often mount the title before their asynchronously loaded points.
+    const pending = await page.evaluate(() => !!document.querySelector('[data-role="ai-overview"],[class*="seo-sellpoints"],[class*="seoSellpoints"],[class*="ai-overview"],[class*="aiOverview"]'));
+    if (pending) for (let attempt = 0; attempt < 12 && !initial; attempt++) {
+      await page.waitForTimeout(200); initial = await evaluateWithTools(page,overviewInPage,args);
+    }
+  }
   if (!initial?.expanded) return initial;
   const started = Date.now(), deadline = started + 6000;
   let best = initial, lastKey = initial.text, changedAt = started, changed = false;
@@ -141,17 +169,31 @@ async function captureOverview(page, {expand = true} = {}) {
 
 function productDetailsInPage({tab,expand}) {
   const {normalize,excluded,visible,control,textOf,htmlOf,imageOf,unique} = pageTools();
-  const descriptionSelector = '#product-description,.product-description,[class*="description--detail"],[class*="description--content"],.detailmodule_html,[data-role="product-description"]';
+  const descriptionSelector = '#product-description,#productDescription,#ae-product-description,#product-description-container,.product-description,[class*="description--detail"],[class*="description--content"],[class*="description--html"],[class*="product-desc--content"],[class*="productDescription"],.detailmodule_html,.detailmodule_dynamic,.detail-desc-decorate-richtext,[data-role="product-description"],[data-testid="product-description"]';
   const valid = element => visible(element) && !excluded(element);
+  if (tab === 'reveal') {
+    const target = [...document.querySelectorAll(descriptionSelector)].find(valid) || [...document.querySelectorAll('#product-description,#productDescription,[data-role="product-description"],iframe[id*="desc"],iframe[class*="desc"]')].find(element => !excluded(element));
+    if (target) {target.scrollIntoView({block:'center',behavior:'instant'}); return true;}
+    return false;
+  }
   if (tab) {
     const labels = tab === 'description' ? /^(?:description|product description|product details|overview)$/i : /^(?:specifications|specification|item specifics|product specifications|features)$/i;
-    const candidates = [...document.querySelectorAll('[role="tab"],[class*="tab--item"],[class*="tab-item"],[class*="tabbar"] a,[class*="tabbar"] button,[class*="tabbar"] span,a[href^="#product-description"],a[href^="#product-spec"]')];
+    const candidates = [...document.querySelectorAll('[role="tab"],[class*="tab--item"],[class*="tab-item"],[class*="tabbar"] a,[class*="tabbar"] button,[class*="tabbar"] span,[class*="comet-tabs"] [class*="tab"],[class*="tabBar"] [class*="item"],[class*="tab-bar"] [class*="item"],[class*="detail-tab"],a[href^="#product-description"],a[href^="#product-spec"]')];
     const target = candidates.find(element => valid(element) && labels.test(normalize(element.textContent)) && (!element.matches('a[href]') || /^#/.test(element.getAttribute('href') || '')) && !element.matches('button[type="submit"]'));
-    if (!target || target.getAttribute('aria-selected') === 'true') return false;
-    target.click(); return true;
+    if (!target) return false;
+    target.scrollIntoView({block:'center',behavior:'instant'});
+    if (target.getAttribute('aria-selected') !== 'true') target.click();
+    return true;
   }
   const descriptions = [...document.querySelectorAll(descriptionSelector)].filter(valid);
-  const topDescriptions = descriptions.filter(element => !descriptions.some(other => other !== element && other.contains(element)));
+  for (const heading of document.querySelectorAll('h2,h3,h4,[role="heading"]')) {
+    if (!valid(heading) || !/^(?:description|product description|product details)$/i.test(normalize(heading.textContent))) continue;
+    let scope = heading.nextElementSibling;
+    if (!scope || scope.matches('h1,h2,h3,h4') || !valid(scope)) continue;
+    if (scope.querySelector('h1,[class*="sku-item--property"],[class*="price-default--current"],[role="tablist"]')) continue;
+    if (textOf(scope).length >= 20 || scope.querySelector('img,iframe')) descriptions.push(scope);
+  }
+  const topDescriptions = [...new Set(descriptions)].filter(element => !descriptions.some(other => other !== element && other.contains(element)));
   const sellerDescriptionHtml = topDescriptions.map(htmlOf).filter(Boolean).join('\n') || null;
   const sellerDescriptionText = unique(topDescriptions.map(textOf)).join('\n\n') || null;
   const descriptionImages = unique(topDescriptions.flatMap(element => [...element.querySelectorAll('img')].filter(image => valid(image)).map(imageOf)));
@@ -253,6 +295,15 @@ async function captureProductDetails(page) {
     }
   };
   await collectFrames();
+  const revealed = await evaluateWithTools(page,productDetailsInPage,{tab:'reveal'});
+  if (revealed) {
+    // Intersection observers may populate an already-selected description tab.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await page.waitForTimeout(200);
+      merge(await evaluateWithTools(page,productDetailsInPage,args)); await collectFrames();
+      if (result.sellerDescriptionText || result.descriptionImages.length) break;
+    }
+  }
   for (const tab of [null,'description','specifications']) {
     const clicked = tab ? await evaluateWithTools(page,productDetailsInPage,{...args,tab}) : await evaluateWithTools(page,productDetailsInPage,{...args,expand:true});
     if (!clicked) continue;
@@ -279,7 +330,7 @@ async function extractPage(page, extraData = [], preferredOverview) {
   const overview = preferredOverview === undefined ? await captureOverview(page) : preferredOverview;
   const data = await evaluateWithTools(page,({extraData}) => {
     const tools = pageTools();
-    const {normalize,requestedId,excluded,visible,textOf,original,imageOf,unique,title:visibleTitle,absolute} = tools;
+    const {normalize,requestedId,excluded,visible,textOf,original,imageUrl,imageOf,unique,title:visibleTitle,absolute} = tools;
     const text = value => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
     const arr = value => Array.isArray(value) ? value : [];
     const directId = object => {
@@ -299,8 +350,8 @@ async function extractPage(page, extraData = [], preferredOverview) {
     }
     roots.push(...extraData);
     const modules = {}, scores = {};
-    const aliases = {PRODUCT_TITLE:'titleModule',PRODUCT_INFO:'productInfoComponent',IMAGE_PC:'imageModule',IMAGE:'imageModule',SKU:'skuModule',PRICE:'priceModule',PRODUCT_PROP:'specsModule',PRODUCT_DESC:'descriptionModule'};
-    const moduleNames = new Set(['titleModule','imageModule','skuModule','priceModule','specsModule','descriptionModule','productInfoComponent','imageComponent','skuComponent','priceComponent','productPropComponent','productDescComponent']);
+    const aliases = {PRODUCT_TITLE:'titleModule',PRODUCT_INFO:'productInfoComponent',IMAGE_PC:'imageModule',IMAGE:'imageModule',SKU:'skuModule',PRICE:'priceModule',PRODUCT_PROP:'specsModule',PRODUCT_DESC:'descriptionModule',PRODUCT_DESCRIPTION:'descriptionModule',PRODUCT_DESC_PC:'descriptionModule',DESCRIPTION:'descriptionModule'};
+    const moduleNames = new Set(['titleModule','imageModule','skuModule','priceModule','specsModule','descriptionModule','productInfoComponent','imageComponent','skuComponent','priceComponent','productPropComponent','productDescComponent','productDescriptionModule','productDescriptionComponent']);
     const seen = new WeakSet(); let visits = 0;
     function walk(object,depth = 0,inheritedMatch = false) {
       if (!object || typeof object !== 'object' || seen.has(object) || depth > 16 || ++visits > 25000 || !matching(object)) return;
@@ -321,7 +372,7 @@ async function extractPage(page, extraData = [], preferredOverview) {
     }
     roots.forEach(root => walk(root));
     const choose = (...names) => names.filter(name => modules[name]).sort((a,b) => scores[b] - scores[a]).map(name => modules[name])[0] || {};
-    const titleData = choose('titleModule','productInfoComponent'), imageData = choose('imageModule','imageComponent'), sku = choose('skuModule','skuComponent'), price = choose('priceModule','priceComponent'), specs = choose('specsModule','productPropComponent'), desc = choose('descriptionModule','productDescComponent');
+    const titleData = choose('titleModule','productInfoComponent'), imageData = choose('imageModule','imageComponent'), sku = choose('skuModule','skuComponent'), price = choose('priceModule','priceComponent'), specs = choose('specsModule','productPropComponent'), desc = choose('descriptionModule','productDescComponent','productDescriptionModule','productDescriptionComponent');
     const structured = [];
     for (const element of document.querySelectorAll('script[type="application/ld+json"]')) {
       try {const value = JSON.parse(element.textContent); structured.push(...arr(value['@graph']),...(Array.isArray(value) ? value : [value]));} catch {}
@@ -330,14 +381,16 @@ async function extractPage(page, extraData = [], preferredOverview) {
     const observedTitle = visibleTitle();
     const product = products.find(value => requestedId && directId(value) === requestedId) || products.find(value => observedTitle && normalize(value.name) === normalize(observedTitle)) || (!observedTitle && products.length === 1 ? products[0] : {}) || {};
     const title = observedTitle || text(titleData.subject || titleData.title || product.name) || null;
-    const gallery = unique([...document.querySelectorAll('[class*="slider--"] img,.images-view-list img,[class*="image-view"] img,[class*="magnifier"] img,.magnifier-image')].filter(element => visible(element) && !excluded(element)).map(imageOf));
-    const moduleImages = arr(imageData.imagePathList || imageData.imageUrlList || imageData.imageList).map(value => original(typeof value === 'object' ? value.url || value.imageUrl : value));
-    const productImages = (Array.isArray(product.image) ? product.image : product.image ? [product.image] : []).map(value => original(typeof value === 'object' ? value.url : value));
+    // Broad slider containers also contain play buttons, stars and UI graphics.
+    const gallery = unique([...document.querySelectorAll('img[class*="slider--img"],[class*="slider--img"] img,img[class*="slider--image"],[class*="slider--image"] img,.images-view-list img,[class*="image-view"] img,[class*="magnifier"] img,.magnifier-image,[data-role="product-image"] img,img[data-role="product-image"]')].filter(element => visible(element) && !excluded(element)).map(imageOf));
+    const moduleImages = arr(imageData.imagePathList || imageData.imageUrlList || imageData.imageList).map(value => imageUrl(typeof value === 'object' ? value.url || value.imageUrl : value)).filter(Boolean);
+    const productImages = (Array.isArray(product.image) ? product.image : product.image ? [product.image] : []).map(value => imageUrl(typeof value === 'object' ? value.url : value)).filter(Boolean);
     const trustedImages = Math.max(scores.imageModule ?? -1,scores.imageComponent ?? -1) > 0;
-    const images = unique([...gallery,...(!gallery.length || trustedImages ? moduleImages : []),...(!gallery.length || directId(product) === requestedId || normalize(product.name) === normalize(observedTitle) ? productImages : [])]);
+    const trustedStructuredImages = productImages.length && (directId(product) === requestedId || normalize(product.name) === normalize(observedTitle));
+    const images = unique(trustedImages && moduleImages.length ? moduleImages : [...gallery,...(!gallery.length ? moduleImages : []),...(!gallery.length || trustedStructuredImages ? productImages : [])]);
     const properties = arr(sku.productSKUPropertyList || sku.skuPropertyList).map(property => ({
       id:text(property.skuPropertyId ?? property.propertyId),name:text(property.skuPropertyName || property.propertyName),
-      values:arr(property.skuPropertyValues || property.values).map(value => ({id:text(value.propertyValueId ?? value.skuPropertyValueId),name:text(value.propertyValueDisplayName || value.propertyValueName || value.name),image:original(value.skuPropertyImagePath || value.imageUrl || '') || null}))
+      values:arr(property.skuPropertyValues || property.values).map(value => ({id:text(value.propertyValueId ?? value.skuPropertyValueId),name:text(value.propertyValueDisplayName || value.propertyValueName || value.name),image:imageUrl(value.skuPropertyImagePath || value.imageUrl || '') || null}))
     }));
     for (const group of document.querySelectorAll('[class*="sku-item--property"],[class*="sku-item--group"],.sku-property')) {
       if (!visible(group) || excluded(group)) continue;
@@ -370,19 +423,47 @@ async function extractPage(page, extraData = [], preferredOverview) {
     });
     const specifications = arr(specs.props || specs.productPropList || specs.properties).map(property => ({name:text(property.attrName || property.name),value:text(property.attrValue || property.value)})).filter(property => property.name && property.value);
     const displayed = ['[class*="price-default--current"]','[class*="price--current"]','[class*="price--sale"]','.product-price-current','[itemprop="price"]'].flatMap(selector => [...document.querySelectorAll(selector)]).filter(element => visible(element) && !excluded(element) && !element.closest('del,s,strike')).map(textOf).find(Boolean) || null;
-    return {title,titleSource:observedTitle ? 'dom' : title ? 'structured' : null,sourceUrl:location.href,capturedAt:new Date().toISOString(),images,descriptionUrl:absolute(desc.descriptionUrl || desc.detailDesc || '') || null,
-      structuredDescriptionHtml:typeof desc.description === 'string' && /<[^>]+>/.test(desc.description) ? desc.description : null,
-      structuredDescriptionText:text(product.description) || null,
+    const descriptionUrls = [], descriptionHtml = [], descriptionText = [];
+    const readDescription = (source,depth = 0) => {
+      if (!source || typeof source !== 'object' || depth > 3) return;
+      for (const [key,value] of Object.entries(source)) {
+        if (value && typeof value === 'object' && /^(?:data|result|description|desc|detail|content)$/i.test(key)) {readDescription(value,depth + 1); continue;}
+        if (typeof value !== 'string' || !value.trim()) continue;
+        const endpointField = /^(?:descriptionUrl|detailDescUrl|descUrl|pcDescUrl|productDescUrl|detailUrl)$/i.test(key);
+        const urlDescriptionField = /^(?:description|desc|detailDesc|pcDesc|productDescription)$/i.test(key) && /^(?:(?:https?:)?\/\/|\.{0,2}\/)/i.test(value.trim());
+        if ((endpointField || urlDescriptionField) && !/<[a-z][^>]*>/i.test(value)) {
+          const url = absolute(value.trim()); if (url) descriptionUrls.push(url); continue;
+        }
+        if (/^(?:description|desc|detailDesc|pcDescContent|descriptionHtml|descHtml|html|content|productDescription)$/i.test(key)) {
+          if (/<[a-z][^>]*>/i.test(value)) descriptionHtml.push(value);
+          else if (!/^(?:https?:)?\/\//i.test(value.trim())) descriptionText.push(value.trim());
+        }
+        if (/^(?:descriptionText|descText|text)$/i.test(key)) descriptionText.push(value.trim());
+      }
+    };
+    readDescription(desc);
+    for (const frame of document.querySelectorAll('#product-description iframe,.product-description iframe,iframe[id*="desc"],iframe[class*="desc"]')) {
+      if (excluded(frame)) continue;
+      const url = absolute(frame.getAttribute('data-src') || frame.getAttribute('src')); if (url) descriptionUrls.push(url);
+    }
+    return {title,titleSource:observedTitle ? 'dom' : title ? 'structured' : null,sourceUrl:location.href,capturedAt:new Date().toISOString(),images,descriptionUrl:descriptionUrls[0] || null,descriptionUrls:unique(descriptionUrls),
+      structuredDescriptionHtml:unique(descriptionHtml).join('\n') || null,
+      structuredDescriptionText:unique([...descriptionText,text(product.description)]).join('\n\n') || null,
       properties,sizes:properties.filter(property => /size|尺寸/i.test(property.name)),colors:properties.filter(property => /colou?r|颜色/i.test(property.name)),variations,
       prices:{displayed,structuredOffers:product.offers || null,sourceModule:Object.keys(price).length ? price : null},specifications,features:[],raw:{modules,structuredProduct:product},warnings:[]};
   },{extraData});
   const details = await evaluateWithTools(page,productDetailsInPage,{});
-  data.sellerDescriptionHtml = details.sellerDescriptionHtml || data.structuredDescriptionHtml;
-  data.sellerDescriptionText = details.sellerDescriptionText || data.structuredDescriptionText;
+  const structuredDescription = data.structuredDescriptionHtml ? await parseDescription(page,data.structuredDescriptionHtml) : null;
+  const mergeFragments = values => {
+    const parts = [...new Set(values.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))];
+    return parts.filter(part => !parts.some(other => other !== part && other.includes(part))).join('\n\n') || null;
+  };
+  data.sellerDescriptionHtml = mergeFragments([details.sellerDescriptionHtml,structuredDescription?.html]);
+  data.sellerDescriptionText = mergeFragments([details.sellerDescriptionText,structuredDescription?.text,data.structuredDescriptionText]);
   data.descriptionHtml = data.sellerDescriptionHtml;
   data.descriptionText = data.sellerDescriptionText;
   data.descriptionSource = data.descriptionText || data.descriptionHtml ? 'seller' : null;
-  data.descriptionImages = details.descriptionImages;
+  data.descriptionImages = [...new Set([...details.descriptionImages,...structuredDescription?.images || []])];
   data.specifications = [...new Map([...data.specifications,...details.specifications].map(row => [JSON.stringify([row.name,row.value]),row])).values()];
   data.features = details.features;
   if (overview?.text) {
@@ -397,21 +478,27 @@ async function extractPage(page, extraData = [], preferredOverview) {
 async function parseDescription(page, html, baseUrl) {
   return page.evaluate(({html,baseUrl}) => {
     const document = new DOMParser().parseFromString(html,'text/html');
-    for (const element of document.querySelectorAll('script,style,noscript,template,iframe,object,embed,form,link,meta,base')) element.remove();
-    for (const element of document.querySelectorAll('*')) for (const attribute of [...element.attributes]) if (/^on/i.test(attribute.name) || /^(javascript|vbscript):/i.test(attribute.value.trim())) element.removeAttribute(attribute.name);
+    for (const element of document.querySelectorAll('script,style,noscript,template,iframe,object,embed,form,link,meta,base,button,input,select,textarea,svg,[hidden],[aria-hidden="true"]')) element.remove();
+    for (const element of document.querySelectorAll('*')) {
+      if (element.style.display === 'none' || element.style.visibility === 'hidden') {element.remove(); continue;}
+      for (const attribute of [...element.attributes]) if (/^on/i.test(attribute.name) || /^(javascript|vbscript):/i.test(attribute.value.trim())) element.removeAttribute(attribute.name);
+    }
     const images = [];
     const bestSrcset = value => (/^\s*(?:data|blob):/i.test(String(value || '')) ? [] : String(value || '').split(',')).map(part => {
       const match = part.trim().match(/^(\S+)(?:\s+(\d+(?:\.\d+)?)([wx]))?$/);
       return match ? {url:match[1],size:Number(match[2]) || 1} : null;
     }).filter(Boolean).sort((a,b) => b.size - a.size)[0]?.url || '';
     for (const image of document.querySelectorAll('img')) {
+      const identity = [image.className,image.id,image.getAttribute('data-role'),image.getAttribute('data-testid')].join(' ');
+      const label = (image.getAttribute('alt') || image.getAttribute('aria-label') || '').trim();
+      if (image.closest('[class*="avatar"],[class*="Avatar"],[class*="user-photo"],[class*="userPhoto"],[class*="profile-photo"],[class*="store-logo"],[class*="storeLogo"],[class*="shop-logo"]') || /(?:^|[\s_-])(?:icon|rating|stars?|play|pause|spinner|loading|placeholder|watermark)(?:[\s_-]|$)/i.test(identity) || /^(?:star|rating star|play|play video|pause|video play|loading|placeholder|zoom|close|next|previous)(?: icon| button)?$/i.test(label)) {image.remove(); continue;}
       const values = [image.getAttribute('data-original'),bestSrcset(image.getAttribute('data-srcset') || image.getAttribute('srcset')),image.getAttribute('data-src'),image.getAttribute('data-lazy-src'),image.getAttribute('src')];
       for (const value of values) {
         if (!value || /^(?:null|undefined|#|about:blank)$/i.test(value.trim())) continue;
         try {
-          const source = value.replace(/(\.(?:jpe?g|png|webp|avif))_\d+x\d+[^/?]*(?=\?|$)/i,'$1');
+          const source = value.replace(/(\.(?:jpe?g|png|webp|avif))(?:_\d+x\d+[^/?]*|_Q\d+[^/?]*|_\.webp)(?=\?|$)/i,'$1');
           const url = new URL(source,baseUrl || location.href);
-          if (!/^https?:$/.test(url.protocol)) continue;
+          if (!/^https?:$/.test(url.protocol) || /^(?:g|assets|gw)\.alicdn\.com$/i.test(url.hostname) || /\.svg(?:$|[?#])/i.test(url.pathname) || /(?:^|[/_-])(?:icons?|sprites?|emojis?|favicon|loading|placeholder)(?:[/_.-]|$)/i.test(url.pathname)) continue;
           image.src = url.href; images.push(url.href); break;
         } catch {}
       }

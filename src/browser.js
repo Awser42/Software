@@ -8,7 +8,7 @@ const {makeArchive} = require('./archive');
 const {bundledChromium}=require('./browser-path');
 
 class Browser {
-  constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null; }
+  constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null;this.opening=null;this.hidden=true; }
   async ensureInstalled() {
     const bundled=await bundledChromium(this.resourcesPath);
     if(bundled){this.browserExecutablePath=bundled;this.notify('Bundled Chromium is ready. No browser download required.');return;}
@@ -28,18 +28,55 @@ class Browser {
     }).finally(() => {this.installing=null;});
     return this.installing;
   }
-  async open(url = 'https://www.aliexpress.com/') {
+  async open(url = 'https://www.aliexpress.com/', {show=true} = {}) {
+    // A manual Show Chromium click can arrive while the queue is starting its
+    // browser. Reuse that launch rather than locking the same profile twice.
+    if(this.opening) await this.opening;
     if (this.context) {
       if (!this.page || this.page.isClosed()) this.page=await this.context.newPage();
-      await this.page.bringToFront(); return this.page;
+      if(show) await this.show();
+      return this.page;
     }
-    await this.ensureInstalled();
-    const {chromium}=require('playwright');
-    this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US'],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
-    this.context.on('close', () => {this.context=null; this.page=null;});
-    this.page=this.context.pages()[0] || await this.context.newPage();
-    await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
+    this.opening=(async()=>{
+      await this.ensureInstalled();
+      const {chromium}=require('playwright');
+      this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US',...(!show?['--start-minimized']:[])],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
+      this.context.on('close', () => {this.context=null; this.page=null;this.hidden=true;});
+      this.page=this.context.pages()[0] || await this.context.newPage();
+      if(show) await this.setWindowVisibility(true);else await this.setWindowVisibility(false);
+      await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
+      return this.page;
+    })();
+    try {return await this.opening;} finally {this.opening=null;}
+  }
+  async setWindowVisibility(show) {
+    if(!this.context||!this.page||this.page.isClosed())return false;
+    let session;
+    try {
+      session=await this.context.newCDPSession(this.page);
+      const {windowId}=await session.send('Browser.getWindowForTarget');
+      await session.send('Browser.setWindowBounds',{windowId,bounds:{windowState:show?'normal':'minimized'}});
+      if(show) await this.page.bringToFront();
+      this.hidden=!show;
+      return true;
+    } catch(error) {
+      // The browser remains usable if a desktop/window manager does not expose
+      // minimize controls. Never switch to a separate headless login session.
+      if(show) {await this.page.bringToFront();this.hidden=false;return true;}
+      this.notify(`Chromium could not be minimized automatically: ${error.message}`);
+      return false;
+    } finally {await session?.detach().catch(()=>{});}
+  }
+  async show() {
+    if(this.opening) await this.opening;
+    if(!this.context)return this.open();
+    if(!this.page||this.page.isClosed())this.page=await this.context.newPage();
+    await this.setWindowVisibility(true);
     return this.page;
+  }
+  async hide() {
+    if(this.opening) await this.opening;
+    return this.setWindowVisibility(false);
   }
   async inspectGate(page) {
     return page.evaluate(() => {
@@ -48,7 +85,8 @@ class Browser {
     });
   }
   async extract(item, settings, queue) {
-    const page=await this.open(item.url);
+    const background=settings.backgroundBrowser!==false;
+    const page=await this.open(item.url,{show:!background});
     const responses=[];
     const pending=new Set();
     const handler=response => {
@@ -72,8 +110,8 @@ class Browser {
       for (let attempt=0; attempt<4; attempt++) {
         await queue.checkpoint();
         if (await this.inspectGate(page)) {
-          await page.bringToFront();
-          await queue.manual('Complete login or CAPTCHA in Chromium. Open the product page there, then click Continue after login.');
+          if(!background) await this.show();
+          await queue.manual('Click Show Chromium, complete login or CAPTCHA, open the product page there, then click Continue after login.');
           await page.waitForTimeout(2000); continue;
         }
         const overview=await captureOverview(page);
@@ -83,10 +121,14 @@ class Browser {
         for (let n=0; n<6; n++) { await queue.checkpoint(); await page.evaluate(n=>window.scrollTo(0, n*850),n); await page.waitForTimeout(250); }
         await Promise.allSettled([...pending]);
         const details=await captureProductDetails(page);
+        // Opening the native description tab can start another PDP response.
+        // Keep those observed endpoint modules before taking the final snapshot.
+        await Promise.allSettled([...pending]);
         const data=await extractPage(page,responses,overview||undefined);
         if(topData.titleSource==='dom') {data.title=topData.title;data.titleSource='dom';}
         const unique=values=>[...new Set(values.filter(Boolean))];
         data.descriptionUrl=data.descriptionUrl||topData.descriptionUrl;
+        data.descriptionUrls=unique([...(topData.descriptionUrls||[]),topData.descriptionUrl,...(data.descriptionUrls||[]),data.descriptionUrl,...(details.descriptionUrls||[])]).slice(0,8);
         if(!data.properties.length&&topData.properties?.length) data.properties=topData.properties;
         if(!data.variations.length&&topData.variations?.length) data.variations=topData.variations;
         data.images=unique([...(topData.images||[]),...(data.images||[])]);
@@ -111,8 +153,8 @@ class Browser {
           onProgress:message=>this.notify(message),
           onGate:async()=>{
             if(await this.inspectGate(page)) {
-              await page.bringToFront();
-              await queue.manual('Complete login or CAPTCHA in Chromium, then click Continue to read the visible variation prices.');
+              if(!background) await this.show();
+              await queue.manual('Click Show Chromium, complete login or CAPTCHA, then click Continue to read the visible variation prices.');
             }
           }
         });
@@ -129,19 +171,25 @@ class Browser {
         // because the overview beside the product price was available.
         const fragments=unique([topData.sellerDescriptionHtml,data.sellerDescriptionHtml,details.sellerDescriptionHtml,
           ...(data.descriptionSource==='ai-overview'?[]:[data.descriptionHtml])]);
-        if (data.descriptionUrl) {
+        for (const descriptionUrl of data.descriptionUrls) {
+          await queue.checkpoint();
           try {
-            const u=new URL(data.descriptionUrl);
+            const u=new URL(descriptionUrl);
             if (!/^https?:$/.test(u.protocol) || !/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(u.hostname)) throw new Error('Description host not recognized');
-            const response=await this.context.request.get(data.descriptionUrl,{timeout:30000});
+            const response=await this.context.request.get(descriptionUrl,{timeout:30000,maxRedirects:3});
             if(!response.ok()) throw new Error(`HTTP ${response.status()}`);
+            if(typeof response.url==='function') {
+              const finalUrl=new URL(response.url());
+              if(!/^https?:$/.test(finalUrl.protocol)||!/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(finalUrl.hostname)||/captcha|punish|\/login|\/signin|passport\./i.test(finalUrl.href))throw new Error('Description endpoint redirected away from seller content');
+            }
+            if(Number(response.headers()['content-length'])>8*1024*1024)throw new Error('Description exceeds 8 MB');
             const body=await response.text();
             if(body.length>8*1024*1024) throw new Error('Description exceeds 8 MB');
-            if(/^\s*</.test(body)) {const clean=await parseDescription(page,body,data.descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
+            if(/^\s*</.test(body)) {const clean=await parseDescription(page,body,descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
             else {
               let json;try{json=JSON.parse(body);}catch{}
-              const html=json?.data?.pcDescContent||json?.data?.description||json?.description||json?.html;
-              if(typeof html==='string') {const clean=await parseDescription(page,html,data.descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
+              const html=json?.data?.pcDescContent||json?.data?.description||json?.data?.descHtml||json?.data?.descriptionHtml||json?.data?.result?.pcDescContent||json?.result?.description||json?.description||json?.html;
+              if(typeof html==='string') {const clean=await parseDescription(page,html,descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
               else data.warnings.push('Description endpoint did not expose supported description content.');
             }
           } catch(e) {data.warnings.push(`Description fetch failed: ${e.message}`);}
@@ -150,9 +198,9 @@ class Browser {
           try {
             const frameUrl=new URL(frame.url());
             const allowedFrame=/^https?:$/.test(frameUrl.protocol)&&/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(frameUrl.hostname);
-            const excludedFrame=/captcha|login|signin|recommend|review/i.test(frameUrl.href);
+            const excludedFrame=/captcha|login|signin|recommend|(?:[\/._-])reviews?(?:[\/?. _-]|$)/i.test(frameUrl.href);
             let sellerFrame=allowedFrame&&!excludedFrame&&/desc|description/i.test(frameUrl.pathname);
-            if(!sellerFrame&&!excludedFrame&&(allowedFrame||frameUrl.href==='about:blank'||frameUrl.href==='about:srcdoc')) {const element=await frame.frameElement();sellerFrame=await element.evaluate(el=>!!el.closest('#product-description,.product-description,[class*="description--detail"],.detailmodule_html'));}
+            if(!sellerFrame&&!excludedFrame&&(allowedFrame||frameUrl.href==='about:blank'||frameUrl.href==='about:srcdoc')) {const element=await frame.frameElement();sellerFrame=await element.evaluate(el=>!!el.closest('#product-description,#productDescription,#ae-product-description,.product-description,[class*="description--detail"],[class*="description--content"],.detailmodule_html'));}
             if(sellerFrame) {const clean=await parseDescription(frame,await frame.locator('body').innerHTML({timeout:3000}));fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
           } catch(e) {data.warnings.push(`Description frame unavailable: ${e.message}`);}
         }
@@ -177,6 +225,6 @@ class Browser {
       throw new Error('Login or verification is still blocking the page. Complete it and retry this link.');
     } finally {page.off('response',handler);}
   }
-  async close() {if(this.context) await this.context.close();}
+  async close() {if(this.opening)await this.opening.catch(()=>{});if(this.context) await this.context.close();}
 }
 module.exports={Browser};
