@@ -24,11 +24,28 @@ Local version 1.2.0 checks passed on 2026-10-21:
 - `bash scripts/test-ui-linux.sh`: passed with the real Electron UI and production Chromium/queue/archive path. Manual verification, pause/resume, failed navigation and retry, duplicate skipping, persistence and ten-product streaming delivery passed. All 11 exported ZIPs contained only the CSV and three decodable JPEG images; expanded overview text remained preferred over seller text.
 - JavaScript syntax and `git diff --check` passed.
 
-The native Windows packaged-EXE test and public version 1.2.0 release are pending. The workflow tests the actual packaged code and bundled Chromium, including a CSV/JPEG export from mislabeled WebP bytes, before publication. No native Windows success is claimed until that run completes.
+Native Windows checks passed in [run 39558244132](https://github.com/Awser42/Software/actions/runs/39558244132), source commit `b144fccf02a423d01f5077559d25f32808950bb9`:
+
+- Windows unit/archive tests passed.
+- Packaged runtime files matched source, and the bundled Chromium bytes matched the build manifest SHA-256.
+- The real desktop workflow using shipped Chromium passed the ten-product batch and CSV/JPEG-only archive assertions.
+- The actual packaged Windows EXE launched its included Chromium and used the packaged JPEG/archive modules to convert deliberately mislabeled WebP into a decodable 20×12 JPEG. The resulting ZIP contained only the exact four-column CSV and one readable variation-image filename, preserving the observed USD 8.15 fixture price.
+
+Portable compression, artifact upload and public release publication also passed in that same run. The `v1.2.0` release tag resolves to the tested source commit above.
+
+Public downloads were independently checked without GitHub login on 2026-10-21:
+
+- [Windows EXE](https://github.com/Awser42/Software/releases/download/v1.2.0/AliExpress-Product-Archiver-1.2.0-win-x64.exe): HTTP 200, 203,926,282 bytes; a 16-byte HTTP 206 range response begins with the executable `MZ` signature.
+- [Download ZIP](https://github.com/Awser42/Software/releases/download/v1.2.0/AliExpress-Product-Archiver-1.2.0-Download.zip): HTTP 200, 203,927,330 bytes; its HTTP 206 range response begins with `PK` ZIP bytes.
+- [Public SHA-256 manifest](https://github.com/Awser42/Software/releases/download/v1.2.0/SHA256SUMS.txt): HTTP 200. The EXE hash is `e5ef4c5352941861fbb487943ca671b3f8c4ac039886cf691d601d7ef7a6142d`; the ZIP hash is `b706c7eb356db488c07f8cc0ddef46bfed21352056b79619195e067b9fda58f8`.
+
+The range probes verify public delivery and file signatures; they do not constitute an independent full-file hash calculation. The publisher created these assets from the tested workflow artifact and generated the manifest before uploading them.
 
 The earlier version 1.1.0 Windows workflow passed at [run 39548331257](https://github.com/Awser42/Software/actions/runs/39548331257), source commit `795422b373ef5c4fff263f8d618ce5bc1d769f1d`. That run covered the prior export format and does not validate the new CSV/JPEG changes.
 
 ## Live-account limits
+
+The supplied product URL `https://www.aliexpress.us/item/3256810248416998.html` was attempted from this cloud machine on 2026-10-21; the HTTPS proxy rejected the connection with HTTP 403 before an AliExpress page loaded. No live product fields or logged-in account prices were validated from that request.
 
 Controlled fixtures verify extraction and export behavior. They do not establish a live account-specific AliExpress price or guarantee compatibility with every live product. No real account login or CAPTCHA completion is claimed by fixture tests. Login takes place manually in the visible Chromium window.
 
