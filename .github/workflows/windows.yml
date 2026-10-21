@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  actions: read
 jobs:
   test-and-package:
     runs-on: windows-latest
@@ -23,6 +24,8 @@ jobs:
       ELECTRON_BUILDER_COMPRESSION_LEVEL: '9'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -39,7 +42,34 @@ jobs:
         run: npm exec -- electron-builder --win --x64 --dir
       - name: Verify browser bytes and packaged runtime source
         run: node scripts/verify-package.js
+      - name: Verify reusable completed desktop evidence for unchanged app source
+        id: desktopProof
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Distribution-test retries can reuse the completed batch only when
+          # every app, dependency, browser-build and desktop-fixture input matches.
+          $testedSource = '6dc4d1e040bdb1a7f9148210ac2811b4d6953b70'
+          git diff --quiet $testedSource HEAD -- src package.json package-lock.json test/ui.e2e.js test/electron-harness.js test/fixtures.js scripts/bundle-chromium.js
+          if ($LASTEXITCODE -ne 0) { 'reuse=false' >> $env:GITHUB_OUTPUT; exit 0 }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39577928036" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.head_sha -ne $testedSource) { throw 'Desktop evidence source could not be verified.' }
+          $job = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/119148115989" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $job.run_id -ne 39577928036) { throw 'Desktop evidence job could not be verified.' }
+          $passed = @($job.steps | Where-Object { $_.name -eq 'Practical desktop test using shipped Chromium (30-product batch)' -and $_.conclusion -eq 'success' })
+          if ($passed.Count -ne 1) { throw 'The prior desktop batch did not pass.' }
+          'reuse=true' >> $env:GITHUB_OUTPUT
+          'The unchanged application and fixtures retain the completed 30-product Windows batch from https://github.com/Awser42/Software/actions/runs/39577928036. This run separately verifies its rebuilt package and portable distribution.' >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/download-artifact@v4
+        if: steps.desktopProof.outputs.reuse == 'true'
+        with:
+          name: practical-test-evidence
+          path: test-results
+          github-token: ${{ github.token }}
+          run-id: 39577928036
       - name: Practical desktop test using shipped Chromium (30-product batch)
+        if: steps.desktopProof.outputs.reuse != 'true'
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
@@ -145,7 +175,8 @@ jobs:
 
           Download the EXE directly, or download and extract the Download.zip.
 
-          This exact artifact passed native Windows tests, including the 30-product desktop batch, actual JPEG decoding, visible variation prices and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          Native Windows package, JPEG, visible-price and small-update checks for this distribution: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          The 30-product desktop batch is either run there or reused only after verifying unchanged application, dependency, browser-build and fixture inputs against completed source 6dc4d1e040bdb1a7f9148210ac2811b4d6953b70 in https://github.com/$GH_REPO/actions/runs/39577928036.
           Tested source: $TESTED_COMMIT
 
           Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. See Live-product-check.json for the separate anonymous live-page result; verification/login may prevent that check. The EXE is unsigned.
