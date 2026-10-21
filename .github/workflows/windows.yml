@@ -1,0 +1,52 @@
+name: Windows practical tests and bundled Chromium
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      ELECTRON_BUILDER_COMPRESSION_LEVEL: '5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - name: Install standalone test browser
+        run: npx playwright install chromium
+      - name: Unit and archive tests
+        run: npm test
+      - name: Download pinned Windows Chromium
+        run: npm run bundle:chromium
+      - name: Package Windows app with Chromium
+        run: npm run build:win
+      - name: Verify browser bytes and packaged runtime source
+        run: node scripts/verify-package.js
+      - name: Practical desktop test using shipped Chromium (10-product batch)
+        env:
+          E2E_BUNDLED: '1'
+        run: node test/ui.e2e.js
+      - name: Launch packaged Windows EXE and bundled Chromium
+        run: node test/packaged.e2e.js
+      - name: Create single-file EXE with Chromium included
+        run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: practical-test-evidence
+          path: test-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
+          path: |
+            dist/*win-x64.zip
+            dist/*win-x64.exe
