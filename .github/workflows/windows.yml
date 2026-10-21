@@ -1,6 +1,11 @@
 name: Windows practical tests and bundled Chromium
 on:
   workflow_dispatch:
+    inputs:
+      product_url:
+        description: AliExpress product URL for the separate anonymous check
+        required: true
+        default: https://www.aliexpress.us/item/3256811699433017.html
   push:
     branches: [main]
     tags: ['v*']
@@ -44,7 +49,7 @@ jobs:
         continue-on-error: true
         env:
           E2E_BUNDLED: '1'
-          LIVE_PRODUCT_URL: https://www.aliexpress.us/item/3256810248416998.html
+          LIVE_PRODUCT_URL: ${{ inputs.product_url || 'https://www.aliexpress.us/item/3256811699433017.html' }}
         run: node test/live-product.e2e.js
       - name: Create single-file EXE with Chromium included
         run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked

@@ -31,6 +31,14 @@ Required checks cover spreadsheet-like 15/20/30-link paste, 30-product streaming
 
 The earlier version reports are retained below for history.
 
+## Corrected embroidery product URL
+
+After the release, the user supplied the corrected product link `https://www.aliexpress.us/item/3256811699433017.html`. Its tracking/cart query parameters were removed for the product check; query-string prices were not used as product-price evidence.
+
+The focused native Windows [run 39569653984](https://github.com/Awser42/Software/actions/runs/39569653984) passed setup, matching compact Chromium download, production extraction attempt, public audit recording and evidence upload. It used the unchanged application extraction source from version 1.3.0, not a newly built release. The [recorded audit](validation/live-products/3256811699433017.json) shows an actual attempt at `2026-10-21T08:30:18.504Z` with no account session. AliExpress redirected the browser to `https://www.aliexpress.us//item/3256811699433017.html/_____tmd_____/punish`, a verification page. Status was `manual-login-required`, title was null, and all extracted field/image/variation counts were zero. A successful audit job here means the attempt and its access limitation were recorded; it does not mean live extraction succeeded.
+
+Independent normal HTTPS and Chromium probes from the cloud workspace also failed before reaching the origin, with proxy tunnel HTTP 403 / `ERR_TUNNEL_CONNECTION_FAILED`, for both the corrected `.us` URL and the standard `.com` URL. No live title, description, images or variation prices were validated for this product. The user must complete login/verification manually in the app's visible Chromium before account-specific extraction can be checked. The existing v1.3.0 download remains the previously tested artifact, with unchanged source and checksums.
+
 ## Previous visible-price releases
 
 ## Version 1.2.1 checks
