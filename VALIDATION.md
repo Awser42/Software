@@ -25,3 +25,7 @@ No AliExpress account was logged in here. Login and CAPTCHA completion remain ma
 ## Windows user check
 
 Run the single-file EXE, or extract the entire ZIP and run its app EXE. Click Open Chromium / Login; the included browser should open without a separate download. Sign in, set currency/delivery region, paste 8–10 real product links and Run. Each completed product appears immediately in Latest saved product and Downloads while remaining links continue. Inspect prices, image folders, description HTML, CSV files, complete JSON, and warnings in the saved ZIPs.
+
+## Compact 1.1 release
+
+The preceding full Windows workflow passed at https://github.com/Awser42/Software/actions/runs/39547465770 (commit ee121fe), including the ten-product streaming batch, native packaged EXE and included Chromium. Version 1.1 keeps Chromium bundled, enables maximum compression, ships English browser/desktop interface packs, and preserves the original Chromium download intact. A fresh Windows workflow validates the compact release; its actual result is linked in the delivery report.

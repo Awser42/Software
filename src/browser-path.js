@@ -2,7 +2,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 async function bundledChromium(resourcesPath,platform=process.platform){
  if(platform!=='win32')return null;
- const roots=[resourcesPath&&path.join(resourcesPath,'chromium'),path.resolve(__dirname,'../build-resources/chromium')].filter(Boolean);
+ const roots=[resourcesPath&&path.join(resourcesPath,'chromium'),path.resolve(__dirname,'../build-resources/chromium-compact'),path.resolve(__dirname,'../build-resources/chromium')].filter(Boolean);
  for(const root of roots){
   let manifest;
   try {manifest=JSON.parse(await fs.readFile(path.join(root,'bundle.json'),'utf8'));}

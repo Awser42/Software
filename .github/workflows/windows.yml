@@ -12,7 +12,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      ELECTRON_BUILDER_COMPRESSION_LEVEL: '5'
+      ELECTRON_BUILDER_COMPRESSION_LEVEL: '9'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,7 +28,7 @@ jobs:
       - name: Download pinned Windows Chromium
         run: npm run bundle:chromium
       - name: Package Windows app with Chromium
-        run: npm run build:win
+        run: npm exec -- electron-builder --win --x64 --dir
       - name: Verify browser bytes and packaged runtime source
         run: node scripts/verify-package.js
       - name: Practical desktop test using shipped Chromium (10-product batch)
@@ -47,6 +47,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
-          path: |
-            dist/*win-x64.zip
-            dist/*win-x64.exe
+          compression-level: 0
+          path: dist/*win-x64.exe

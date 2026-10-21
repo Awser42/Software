@@ -33,7 +33,7 @@ class Browser {
     }
     await this.ensureInstalled();
     const {chromium}=require('playwright');
-    this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
+    this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US'],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
     this.context.on('close', () => {this.context=null; this.page=null;});
     this.page=this.context.pages()[0] || await this.context.newPage();
     await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});

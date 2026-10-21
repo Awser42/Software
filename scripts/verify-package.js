@@ -10,5 +10,7 @@ const asar=require('@electron/asar');
  assert.equal(manifest.playwrightVersion,require('playwright/package.json').version);
  const bytes=await fs.readFile(path.join(root,'chromium',manifest.executable));
  assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),manifest.sha256);assert.equal(bytes.subarray(0,2).toString(),'MZ');
+ const localeDir=path.join(root,'chromium',path.dirname(manifest.executable),'locales');
+ const locales=await fs.readdir(localeDir);assert(locales.includes('en-US.pak'));assert(locales.every(n=>/^en-US(?:_|\.)/.test(n)),'Only English interface packs should be shipped');
  console.log(`PASS: packaged runtime matches source; bundled Chromium ${manifest.browserVersion} SHA-256 matches downloaded bytes.`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

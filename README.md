@@ -4,9 +4,9 @@ Windows desktop application built with Electron and Playwright Chromium. Paste m
 
 ## Windows release: no Node.js required
 
-The single-file `AliExpress-Product-Archiver-1.0.0-win-x64.exe` is a portable launcher: run it directly. It unpacks its application resources temporarily and keeps your login/settings in your per-user app data. The matching Windows Chromium is included; no separate browser installation is needed. Product extraction still needs Internet access. Alternatively, use the ZIP distribution below.
+The single-file `AliExpress-Product-Archiver-1.1.0-win-x64.exe` is a portable launcher: run it directly. It unpacks its application resources temporarily and keeps your login/settings in your per-user app data. The matching Windows Chromium is included; no separate browser installation is needed. Product extraction still needs Internet access. Alternatively, use the ZIP distribution below.
 
-1. Download `AliExpress-Product-Archiver-1.0.0-win-x64.zip` from the delivered `dist` folder.
+1. Download `AliExpress-Product-Archiver-1.1.0-win-x64.zip` from the delivered `dist` folder.
 2. **Extract the entire ZIP** into a writable folder. Do not run the EXE from inside the ZIP or move the EXE away from its supporting files.
 3. Run **AliExpress Product Archiver.exe**. Requires Windows 10/11 x64. This build is unsigned.
 4. Click **Open Chromium / Login**. The app opens its bundled Playwright Chromium immediately. Node.js and an existing Chrome installation are not required.
@@ -76,7 +76,7 @@ npm ci
 npm run build:win
 ```
 
-The build first downloads pinned Windows Chromium with `npm run bundle:chromium`, then creates `dist/AliExpress-Product-Archiver-1.0.0-win-x64.zip`, containing the EXE, Chromium and supporting resources. Browser binaries are excluded from Git and copied into the release as resources. `scripts/verify-package.js` checks the packaged source and Chromium SHA-256 against the download manifest. No Windows installer or signing certificate is needed to build this portable folder distribution. Sign a commercial release with your own certificate through Electron Builder before distributing broadly. A CI workflow builds and uploads the Windows bundle on manual dispatch or a version tag.
+The build first downloads pinned Windows Chromium with `npm run bundle:chromium`, then creates `dist/AliExpress-Product-Archiver-1.1.0-win-x64.zip`, containing the EXE, Chromium and supporting resources. Browser binaries are excluded from Git and copied into the release as resources. `scripts/verify-package.js` checks the packaged source and Chromium SHA-256 against the download manifest. No Windows installer or signing certificate is needed to build this portable folder distribution. Sign a commercial release with your own certificate through Electron Builder before distributing broadly. A CI workflow builds and uploads the Windows bundle on manual dispatch or a version tag.
 
 To additionally package the single-file portable EXE from that built folder:
 
@@ -109,3 +109,7 @@ The app uses Electron's per-user data directory (normally under `%APPDATA%`) for
 - Output folder unavailable: choose a writable local folder. ZIP creation failures are reported per product; partial temporary files are cleaned on ordinary errors. App crashes may leave `.archive-*` directories or `.zip.partial` files that can be removed when no run is active.
 
 Use the tool for pages you are authorized to access and observe the site's access limits. Extraction is sequential, with a configurable delay; there is no stealth or CAPTCHA bypass mechanism.
+
+## Compact bundled release
+
+Version 1.1 uses maximum compression and ships English interface language packs only for Electron and Chromium, including Chromium’s English grammatical variants. Product descriptions, Unicode exports, prices, images, SKU options, and login persistence are unchanged. The complete original Chromium download stays intact in the build cache; only the separate release copy is trimmed. Chromium remains included, so no separate browser download is required. The EXE decompresses into a larger runtime folder while running; smaller download size does not mean a small installed Chromium.

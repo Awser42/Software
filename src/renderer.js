@@ -24,7 +24,7 @@ function render(s){
 }
 function applySettings(value){settings=value;$('folderLabel').textContent=value.output;$('skipDuplicates').checked=value.skipDuplicates;$('delay').value=value.delayMs/1000;$('settle').value=value.settleMs/1000;}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
-$('openBrowser').onclick=async()=>{const b=$('openBrowser');b.disabled=true;notice('Opening Chromium. The first launch downloads the browser.');try{await call('browser');}catch(e){error(e);}finally{b.disabled=false;}};
+$('openBrowser').onclick=async()=>{const b=$('openBrowser');b.disabled=true;notice('Opening Chromium with your saved login session.');try{await call('browser');}catch(e){error(e);}finally{b.disabled=false;}};
 $('chooseFolder').onclick=()=>call('folder').then(applySettings).catch(error);
 $('showLatest').onclick=()=>call('show',0).catch(error);
 $('saveSettings').onclick=()=>call('settings',{skipDuplicates:$('skipDuplicates').checked,delayMs:Number($('delay').value)*1000,settleMs:Number($('settle').value)*1000}).then(v=>{applySettings(v);notice('Settings saved.');}).catch(error);
