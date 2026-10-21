@@ -1,0 +1,32 @@
+##[group]Run node test/installer.e2e.js
+2026-10-21T13:06:01.1777505Z node test/installer.e2e.js
+2026-10-21T13:06:01.1842649Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T13:06:01.1842980Z env:
+2026-10-21T13:06:01.1843180Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
+2026-10-21T13:06:01.1843443Z ##[endgroup]
+2026-10-21T13:06:01.8126703Z INSTALLER_STAGE install actual Setup EXE per user
+2026-10-21T13:07:27.4456878Z INSTALLER_STAGE verify Windows uninstall registration
+2026-10-21T13:07:33.3325996Z [{"DisplayName":"AliExpress Product Archiver 1.4.2","DisplayVersion":"1.4.2","InstallLocation":null,"UninstallString":"\"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\archiver-nsis-ZD8pS0\\installed\\Uninstall AliExpress Product Archiver.exe\" /currentuser"}]
+2026-10-21T13:07:33.3545106Z INSTALLER_STAGE verify installed source and bundled browser bytes
+2026-10-21T13:07:33.4692218Z PASS: packaged runtime matches source; bundled Chromium 156.0.8078.4 SHA-256 matches downloaded bytes.
+2026-10-21T13:07:33.4789737Z INSTALLER_STAGE run installed app export browser and code-update acceptance
+2026-10-21T13:07:33.9683888Z PACKAGED_STAGE launch baseline packaged EXE
+2026-10-21T13:07:34.5048044Z PACKAGED_STAGE wait for baseline application window
+2026-10-21T13:07:34.7771255Z PACKAGED_STAGE exercise bundled Chromium and production archive
+2026-10-21T13:07:37.7182296Z PACKAGED_STAGE validate packaged archive and Chromium window states
+2026-10-21T13:07:37.7939026Z PASS: native Windows packaged EXE launches bundled Chromium and exports the visible $8.15 variation price (not catalog $99.00) with all observed Excel fields plus decoded 320x192 JPEG from actual WebP bytes.
+2026-10-21T13:07:37.7939954Z PACKAGED_STAGE build future-version code-only fixture
+2026-10-21T13:07:37.9368217Z Code-only update: AliExpress-Product-Archiver-1.4.3-Code-update.zip (67426 bytes); Chromium and Electron excluded.
+2026-10-21T13:07:37.9375078Z PACKAGED_STAGE stage future code using packaged UpdateManager
+2026-10-21T13:07:37.9868185Z PACKAGED_STAGE restart packaged EXE with staged update
+2026-10-21T13:07:38.2922976Z PACKAGED_STAGE wait for updated application window
+2026-10-21T13:07:38.7116856Z PACKAGED_STAGE verify updated version and healthy startup pointer
+2026-10-21T13:07:38.7767494Z PASS: actual packaged EXE verified and installed a 67426-byte app-code update, restarted into version 1.4.3, loaded the real UI/production modules using the existing Electron/Playwright dependencies, and marked startup healthy without downloading Chromium.
+2026-10-21T13:07:38.7768832Z PACKAGED_STAGE complete
+2026-10-21T13:07:38.9297437Z INSTALLER_STAGE uninstall using the installed app button and actual uninstaller
+2026-10-21T13:07:43.2734714Z TypeError: Cannot read properties of undefined (reading '_object')
+2026-10-21T13:07:43.2735625Z     at clientConnection.toImpl (D:\a\Software\Software\node_modules\playwright-core\lib\coreBundle.js:65549:63)
+2026-10-21T13:07:43.2736468Z     at ElectronApplication2.process (D:\a\Software\Software\node_modules\playwright-core\lib\coreBundle.js:65028:41)
+2026-10-21T13:07:43.2737080Z     at D:\a\Software\Software\test\installer.e2e.js:37:25
+2026-10-21T13:07:43.3870167Z ##[error]Process completed with exit code 1.
+2026-10-21T13:07:43.4063288Z 
