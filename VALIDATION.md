@@ -20,6 +20,8 @@ Local validation passed on 2026-10-21:
 - The actual uploaded ZIP's original 48×48 play and 60×60 star JPEGs were rejected by the decoded-image filter. Other retained original JPEG bytes stayed unchanged. Its empty description cells could not be recovered from images or specifications and were not fabricated. The unrelated 600-pixel art is handled by source/DOM scoping, not a guessed pixel-content classification.
 - The companion workbook was independently loaded with openpyxl; its sheets, widths, wrapping, freezes, filters, literal formula-like strings and observed price text were valid.
 
+The first native Windows candidate, [run 39575180105](https://github.com/Awser42/Software/actions/runs/39575180105), passed all 59 unit tests, packaged-source/browser-byte verification and the full 30-product desktop workflow, including the Windows tray and minimized/normal window assertions. Its packaged acceptance test then timed out waiting for the full load event of a controlled fixture navigation in minimized Chromium. Production navigation already uses domcontentloaded. The test was corrected to await that DOM milestone and the actual price field while preserving the price, JPEG, CSV and update assertions. No release was published from the failed candidate.
+
 Linux dummy Xorg does not provide Windows tray/minimize behavior. Native Windows tests therefore separately assert actual minimized/normal Chromium states, tray/background continuation, packaged-code update startup and actual portable-wrapper update startup. Their completed results and public download checks are recorded after the GitHub run finishes. Earlier version reports below do not validate this revision.
 
 ## Version 1.3.0
