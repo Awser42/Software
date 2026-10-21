@@ -1,0 +1,18 @@
+{
+  "testedAt": "2026-10-21T08:30:18.504Z",
+  "url": "https://www.aliexpress.us/item/3256811699433017.html",
+  "accountSession": false,
+  "browser": "bundled Chromium",
+  "status": "manual-login-required",
+  "finalUrl": "https://www.aliexpress.us//item/3256811699433017.html/_____tmd_____/punish",
+  "title": null,
+  "descriptionCharacters": 0,
+  "sellerDescriptionCharacters": 0,
+  "featuresCount": 0,
+  "specificationsCount": 0,
+  "variationRows": 0,
+  "pricedVariationRows": 0,
+  "imageCount": 0,
+  "reason": "The fresh public profile requires manual login or verification. No account was provided.",
+  "screenshot": "live-product.png"
+}
