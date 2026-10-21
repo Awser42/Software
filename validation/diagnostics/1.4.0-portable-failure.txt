@@ -1,0 +1,12 @@
+##[group]Run node test/portable.e2e.js
+2026-10-21T09:45:00.8107838Z node test/portable.e2e.js
+2026-10-21T09:45:00.8182733Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T09:45:00.8183126Z env:
+2026-10-21T09:45:00.8183387Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
+2026-10-21T09:45:00.8183714Z ##[endgroup]
+2026-10-21T09:45:53.7742174Z Error: Portable acceptance timed out
+2026-10-21T09:45:53.7743204Z     at until (D:\a\Software\Software\test\portable.e2e.js:17:217)
+2026-10-21T09:45:53.7743772Z     at async launchPortable (D:\a\Software\Software\test\portable.e2e.js:30:16)
+2026-10-21T09:45:53.7744497Z     at async D:\a\Software\Software\test\portable.e2e.js:54:14
+2026-10-21T09:45:53.8824944Z ##[error]Process completed with exit code 1.
+2026-10-21T09:45:53.9027989Z 
