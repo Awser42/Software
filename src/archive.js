@@ -32,6 +32,7 @@ function money(value) {
 }
 function observedProductPrice(prices = {}) {
   if (money(prices.displayed)) return money(prices.displayed);
+  if (prices.mode === 'visible-variation') return '';
   const offers = Array.isArray(prices.structuredOffers) ? prices.structuredOffers : [prices.structuredOffers];
   const values = offers.filter(Boolean).map(offer => {
     if (offer.price != null) return money({value: offer.price, currency: offer.priceCurrency});
@@ -51,7 +52,8 @@ function observedProductPrice(prices = {}) {
 function productRows(product) {
   const base = {Title:product.title || '', Description:product.descriptionText || ''};
   const variants = product.variations || [];
-  const rows = variants.map(v => ({...base, Variation:v.name || v.attributes || v.skuId || '', Price:money(v.price)}));
+  const visibleMode = product.prices?.mode === 'visible-variation';
+  const rows = variants.map(v => ({...base, Variation:v.name || v.attributes || v.skuId || '', Price:money(visibleMode ? v.displayedPrice : v.price)}));
   if (!variants.length) {
     for (const property of product.properties || []) for (const value of property.values || []) {
       if (value.name) rows.push({...base, Variation:[property.name,value.name].filter(Boolean).join(': '), Price:''});
@@ -59,7 +61,8 @@ function productRows(product) {
   }
   // A separate blank-variation row retains an exposed product-level price when
   // no per-SKU prices were exposed. It does not claim to price any option.
-  if (!rows.length || !rows.some(row => row.Price)) rows.unshift({...base,Variation:'',Price:observedProductPrice(product.prices)});
+  const productPrice=observedProductPrice(product.prices);
+  if (!rows.length || (visibleMode ? product.prices.displayedUnassigned && productPrice : !rows.some(row=>row.Price))) rows.unshift({...base,Variation:'',Price:productPrice});
   return rows;
 }
 async function makeArchive(product, output, request, checkpoint = async () => {}, encodeJpeg) {
@@ -116,7 +119,7 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       try { await fsp.copyFile(tempZip,finalPath,fs.constants.COPYFILE_EXCL); break; }
       catch (e) { if (e.code !== 'EEXIST') throw e; finalPath=path.join(output,`${name}-${i}.zip`); }
     }
-    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,preview,capturedAt:product.capturedAt,exportFormat:'csv-jpeg-v1'};
+    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,preview,capturedAt:product.capturedAt,exportFormat:'csv-jpeg-v1',priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
   } finally {
     await fsp.rm(stage,{recursive:true,force:true}); await fsp.rm(tempZip,{force:true});
   }

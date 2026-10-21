@@ -94,7 +94,7 @@ test('URL validation, tracking removal and spreadsheet formula escaping',()=>{
 test('queue handles pause/resume, manual verification, retry, duplicates, and persistence',async()=>{
  let attempts=0,saved;const q=new Queue({save:async s=>{saved=JSON.parse(JSON.stringify(s));},extract:async(item,settings,q)=>{
    await q.checkpoint();if(item.productId==='2'&&attempts++===0)throw new Error('Temporary failure');
-   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:'csv-jpeg-v1'};
+   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:'csv-jpeg-v1',priceMode:'visible-variation-v1'};
  }});
  await fs.writeFile(path.join(tmp,'existing.zip'),'zip');
  const added=await q.add(['https://www.aliexpress.com/item/1.html','https://www.aliexpress.us/item/1.html','https://www.aliexpress.com/item/2.html']);assert.equal(added[1].status,'duplicate');
@@ -103,6 +103,9 @@ test('queue handles pause/resume, manual verification, retry, duplicates, and pe
  await q.retry();await q.run({});assert.equal(q.items[1].status,'done');assert.equal(q.items[1].attempts,2);assert.equal(saved.downloads.length,2);
  const duplicates=await q.add(['https://www.aliexpress.com/item/1.html']);assert.equal(duplicates[0].status,'duplicate');
  const restored=new Queue({extract:async()=>{},initial:{items:[{status:'running'}]}});assert.equal(restored.items[0].status,'pending');
+});
+test('earlier CSV and JPEG exports without visible-variation pricing can be re-exported',async()=>{
+ const oldFile=path.join(tmp,'old-csv-jpeg.zip');await fs.writeFile(oldFile,'old csv jpeg');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'56',path:oldFile,title:'Earlier CSV and JPEG archive',exportFormat:'csv-jpeg-v1'}]}});const added=await q.add(['https://www.aliexpress.com/item/56.html']);assert.equal(added[0].status,'pending');
 });
 test('legacy exports never prevent re-export to the requested CSV and JPEG format',async()=>{
  const oldFile=path.join(tmp,'legacy.zip');await fs.writeFile(oldFile,'legacy');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'55',path:oldFile,title:'Earlier archive'}]}});const added=await q.add(['https://www.aliexpress.com/item/55.html']);assert.equal(added[0].status,'pending');

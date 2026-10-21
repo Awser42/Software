@@ -35,7 +35,7 @@ jobs:
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
-      - name: Test packaged Windows EXE CSV and JPEG export
+      - name: Test packaged Windows EXE visible price, CSV and JPEG export
         run: node test/packaged.e2e.js
       - name: Create single-file EXE with Chromium included
         run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked
@@ -95,11 +95,11 @@ jobs:
           cat > release-notes.md <<TEXT
           Windows 10/11 x64 portable app with Chromium included.
 
-          Each product ZIP now contains only product.csv with Title, Description, Variation and Price, plus Images/*.jpg. WebP/PNG sources are actually converted to JPEG. Variation filenames retain observed option names. Description prefers the visible AliExpress AI overview and falls back to seller text. Missing SKU prices remain blank. Earlier archives can be exported again in this format.
+          Each product ZIP now contains only product.csv with Title, Description, Variation and Price, plus Images/*.jpg. WebP/PNG sources are actually converted to JPEG. Variation filenames retain observed option names. Description prefers the visible AliExpress AI overview and falls back to seller text. Each known selectable variation is selected in Chromium and its confirmed visible current price is saved. Hidden catalog amounts are not substituted; unconfirmed variation prices stay blank. Earlier archives can be exported again to capture visible prices.
 
           Download the EXE directly, or download and extract the Download.zip.
 
-          This exact artifact passed native Windows tests, including the ten-product desktop batch, actual JPEG decoding and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          This exact artifact passed native Windows tests, including the ten-product desktop batch, actual JPEG decoding, visible variation prices and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Tested source: $TESTED_COMMIT
 
           Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. The EXE is unsigned.

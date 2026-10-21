@@ -4,21 +4,21 @@ Windows desktop app built with Electron and Playwright Chromium. Paste 8, 10, or
 
 ## Run on Windows
 
-Download version 1.2.0 from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Node.js and a separate Chromium installation are not needed.
+Download version 1.2.1 from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Node.js and a separate Chromium installation are not needed.
 
-- Run `AliExpress-Product-Archiver-1.2.0-win-x64.exe` directly. This portable launcher includes Chromium and extracts its runtime resources temporarily.
-- If you download `AliExpress-Product-Archiver-1.2.0-Download.zip`, extract it first, then run the portable EXE inside.
-- A developer-built `AliExpress-Product-Archiver-1.2.0-win-x64.zip` is a folder distribution. Extract its entire contents and keep `AliExpress Product Archiver.exe` beside its supporting files.
+- Run `AliExpress-Product-Archiver-1.2.1-win-x64.exe` directly. This portable launcher includes Chromium and extracts its runtime resources temporarily.
+- If you download `AliExpress-Product-Archiver-1.2.1-Download.zip`, extract it first, then run the portable EXE inside.
+- A developer-built `AliExpress-Product-Archiver-1.2.1-win-x64.zip` is a folder distribution. Extract its entire contents and keep `AliExpress Product Archiver.exe` beside its supporting files.
 
 The release is unsigned. The app saves settings and your Chromium profile under your Windows user account.
 
 1. Click **Open Chromium / Login** and log into AliExpress in that window.
-2. Choose your delivery country and currency in AliExpress. The app observes the prices exposed to that session.
+2. Choose your delivery country and currency in AliExpress. The app reads the visible current price for each variation it can select and confirm in that session.
 3. Choose an output folder, paste one full product URL per line, and click **Run extraction**.
 4. If verification appears, complete it in Chromium, then click **Continue after login / CAPTCHA** in Progress. If you paused, also click Resume.
 5. Open each finished ZIP from Latest saved product or Downloads while the remaining links continue.
 
-**Urdu:** Chromium mein apna AliExpress account login karein, folder choose karein, phir links paste karke Run karein. Har product ki ZIP alag save hoti rahegi. CSV mein title, description, variation aur available price hogi; images alag `Images/` folder mein JPEG hongi. Jo data available nahi hoga woh banaya nahi jayega.
+**Urdu:** Chromium mein apna AliExpress account login karein, folder choose karein, phir links paste karke Run karein. Har product ki ZIP alag save hoti rahegi. CSV mein title, description, variation aur us variation ko select karne par nazar aane wali price hogi; images alag `Images/` folder mein JPEG hongi. Jo data available nahi hoga woh banaya nahi jayega.
 
 ## Export contents
 
@@ -29,17 +29,23 @@ Every ZIP contains only these outputs:
 | `product.csv` | Exactly four columns: `Title`, `Description`, `Variation`, `Price` |
 | `Images/` | Available main, variation and description images, saved as real `.jpg` JPEG files |
 
-The ZIP filename uses the product title and product ID. Existing files are never overwritten. The UTF-8 CSV includes a BOM for Excel, quotes multiline descriptions and escapes spreadsheet formulas. Title and description repeat across variation rows so each row can be read independently. Variation names and their prices come from the observed product data; missing prices stay blank. A generic displayed price is not assigned to unpriced variations, and unseen option combinations are not invented. Price text retains the exposed currency.
+The ZIP filename uses the product title and product ID. Existing files are never overwritten. The UTF-8 CSV includes a BOM for Excel, quotes multiline descriptions and escapes spreadsheet formulas. Title and description repeat across variation rows so each row can be read independently. Variation names come from the observed product data. For each known variation that can be selected and confirmed, Price is read from the visible current-price field after the page settles. Missing or unconfirmed prices stay blank. A generic displayed price is not assigned to other variations, and unseen option combinations are not invented. Price text retains the displayed currency.
 
 For Description, the app first uses the visible AliExpress **AI overview of item**, including its observed disclaimer and bullet text. This is content displayed by AliExpress; the app does not generate a summary. If no substantive overview is available, it uses the seller description lower on the page. If neither is exposed, Description stays blank.
 
 Available image URLs use the original/CDN size where exposed. Recognized thumbnail suffixes are removed. WebP, PNG and other supported source formats are decoded and converted to JPEG; changing a filename alone is not conversion. JPEG conversion keeps the available image dimensions, with a white background for transparency. Variation filenames include readable observed option names. Duplicate image URLs are downloaded once. An original that AliExpress does not expose cannot be recovered. Failed downloads or conversions appear as warnings in the app while the remaining output is saved.
 
-JSON, HTML, specifications, extra CSVs and text reports are not included in the product ZIP. Earlier-version downloads remain visible as **Earlier archive** and are not relabelled as JPEG exports. Links saved by earlier versions can be added again to create the new format.
+JSON, HTML, specifications, extra CSVs and text reports are not included in the product ZIP. Older CSV/JPEG downloads keep their **CSV + JPEG** label; older output formats appear as **Earlier archive**. Links captured before version 1.2.1 can be added again with duplicate skipping enabled to capture visible variation prices. Existing ZIPs remain available.
 
 ## Prices and completeness
 
-Prices are observations from your Chromium session, including exposed SKU prices and visible price text. They are not a guaranteed checkout total. Shipping, taxes, coupons, new-user discounts, delivery destination, currency and the selected variation can affect the amount. The app does not perform checkout, convert currency or estimate a missing cost.
+Price comes from the **visible current price for the selected variation** in your logged-in Chromium window. The app selects each known variation, confirms that the options are selected, waits for loading and the price to settle, then reads that field. Hidden SKU/catalog amounts, crossed-out original prices and generic product prices are not substituted when a variation price cannot be confirmed; its Price cell stays blank and the app reports a warning.
+
+For example, if selecting `20*20cm` shows `$8.15`, that variation's row uses `$8.15`. Selecting `15X15cm` must supply its own visible price; `$8.15` is not copied to it. This example explains the capture rule and is not a claim that a live account was tested.
+
+Known SKU combinations are visited as exposed. A page with only one observed option group can be measured option by option. Without known SKU combinations, multiple option groups are not expanded into invented combinations. The **Page / variation settling time** setting applies after each selection as well as the initial page load, so products with many variations take longer. Increase it if AliExpress updates prices slowly.
+
+These observations are not a guaranteed checkout total. Shipping, taxes, coupons, new-user discounts, delivery destination, currency and the selected variation can affect the amount. The app does not perform checkout, convert currency or estimate a missing cost.
 
 AliExpress may change its markup, restrict a product or region, or require verification. The extractor reads known product modules, JSON-LD, relevant observed responses and product DOM fields. Missing fields stay empty; a page without credible product content fails rather than creating invented data. Review warnings in Downloads for unavailable fields or images.
 
@@ -47,8 +53,8 @@ Use full `/item/NUMBER.html` or `/i/NUMBER.html` links on `aliexpress.com`, `ali
 
 ## Queue controls
 
-- **Pause / Resume:** pauses at product, scroll and download boundaries. An in-flight request or ZIP write can finish first.
-- **Duplicate skipping:** compares product IDs against active jobs and existing successful CSV/JPEG exports. Deleted ZIPs and earlier export formats can be captured again. Disable the setting to save another snapshot.
+- **Pause / Resume:** pauses at product, variation, scroll and download boundaries. An in-flight request or ZIP write can finish first.
+- **Duplicate skipping:** compares product IDs against active jobs and existing successful exports made with visible variation prices. Deleted ZIPs, version 1.2.0 CSV/JPEG exports and earlier formats can be captured again. Disable the setting to save another snapshot.
 - **Retry failed links:** requeues failed products. A completed ZIP with image warnings counts as completed; recapture it with duplicate skipping disabled to retry those images.
 - **Recovery:** settings, queue and download history persist. Interrupted jobs become pending at startup; click Run to continue. Login/CAPTCHA waits require Continue.
 - **Clear finished:** removes finished queue rows without deleting ZIPs or download history.
@@ -108,7 +114,7 @@ The app uses Electron's per-user data directory, normally under `%APPDATA%`, for
 
 - **Browser download fails during source development:** check access to Playwright's official download hosts and retry Open Chromium. Keep TLS verification enabled.
 - **Verification repeats:** finish the challenge on the requested product page in Chromium, then Continue.
-- **Description or price is missing:** check delivery country/currency and page content, increase settling time, and retry. Expand the description in Chromium if needed. Read the warnings in Downloads.
+- **Description or price is missing:** check delivery country/currency and page content, increase Page / variation settling time, and retry. The app leaves Price blank when it cannot select and confirm a variation or observe a stable current price. Expand the description in Chromium if needed. Read the warnings in Downloads.
 - **Browser closes during a run:** reopen Chromium and retry failed links.
 - **Output folder fails:** choose a writable local folder. Temporary files are cleaned after ordinary errors. A crash may leave `.archive-*` or `.zip.partial` files; remove these only while no run is active.
 

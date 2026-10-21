@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const {spawn} = require('node:child_process');
 const {extractPage, parseDescription, captureOverview} = require('./extract');
 const {convertToJpeg} = require('./jpeg');
+const {captureVisiblePrices} = require('./prices');
 const {makeArchive} = require('./archive');
 const {bundledChromium}=require('./browser-path');
 
@@ -90,6 +91,17 @@ class Browser {
           await queue.manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
         }
         data.productId=item.productId;
+        await page.evaluate(()=>window.scrollTo(0,0));
+        await captureVisiblePrices(page,data,queue,{
+          settleMs:settings.settleMs||3000,
+          onProgress:message=>this.notify(message),
+          onGate:async()=>{
+            if(await this.inspectGate(page)) {
+              await page.bringToFront();
+              await queue.manual('Complete login or CAPTCHA in Chromium, then click Continue to read the visible variation prices.');
+            }
+          }
+        });
         if (data.descriptionSource !== 'ai-overview' && data.descriptionUrl && !data.descriptionHtml) {
           try {
             const u=new URL(data.descriptionUrl);

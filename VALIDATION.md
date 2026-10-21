@@ -1,12 +1,16 @@
-# Validation report — CSV and JPEG export
+# Validation report — visible variation prices, CSV and JPEG export
 
-## Version 1.2.0 checks
+## Version 1.2.1 checks
 
-The export contract for this version is one product ZIP containing only `product.csv` and `Images/*.jpg`. CSV columns are exactly `Title`, `Description`, `Variation`, `Price`. The observed AliExpress AI overview is preferred, with seller description as the fallback. Missing data stays blank.
+The export contract for this version is one product ZIP containing only `product.csv` and `Images/*.jpg`. CSV columns are exactly `Title`, `Description`, `Variation`, `Price`. The observed AliExpress AI overview is preferred, with seller description as the fallback. Price must come from the visible current-price field after the corresponding variation is selected and confirmed. Missing data stays blank.
 
 Validation for this revision must confirm:
 
-- Extraction preserves observed titles, descriptions, variation names, currencies and prices without filling missing SKU prices or inventing combinations.
+- Extraction preserves observed titles, descriptions, variation names and currencies. The visible selected-variation price wins when hidden SKU/catalog amounts differ.
+- A fixture with `20*20cm` showing `$8.15` and a different price for `15X15cm` exports each selection's own observed price. Loading, delayed changes, selected-state confirmation and stable-price waiting are exercised.
+- Unselectable, unavailable or unconfirmed variations keep blank prices; hidden catalog amounts and unrelated or crossed-out prices are not fallback values.
+- A single DOM-only option group can produce measured rows, while multiple groups without known SKU combinations do not create a Cartesian product.
+- Exports from version 1.2.0 remain visible and can be recaptured under the new visible-price mode with duplicate skipping enabled.
 - An expanded, substantive AI overview takes priority; hidden or unrelated content does not replace the seller fallback.
 - ZIP contents match the four-column CSV and single JPEG image folder contract.
 - WebP/PNG sources become decodable JPEG files with correct dimensions and image content, including a WebP payload served behind a `.jpg` URL.
@@ -17,6 +21,16 @@ Validation for this revision must confirm:
 Results for the current revision are recorded below only after the corresponding commands and GitHub run finish. The checklist alone is not evidence of a passed test.
 
 ## Recorded results
+
+Local version 1.2.1 checks passed on 2026-10-21:
+
+- `npm test`: 32 tests passed, zero failures or skips. The price suite uses a selected `20*20cm` with visible `$8.15`, another size with `$6.40`, and deliberately conflicting hidden catalog amounts. CSV rows preserve the confirmed visible prices and ignore those catalog amounts.
+- `node --test test/prices.test.js`: all 12 price tests passed again after the final option-click guard change. They cover hidden/shipping/coupon/crossed-out prices, delayed price updates, loading states, silent stale prices, same-price rerenders, ambiguous SKU mapping, missing prices and DOM-only option groups. A selected option alone is insufficient evidence that the previous price has refreshed.
+- `bash scripts/test-ui-linux.sh`: passed. The real desktop workflow exported 11 products, including the ten-link streaming batch. Every ZIP contained only the four-column CSV and three decodable JPEGs; the CSV used the visible `$8.15` rather than the hidden `$99.00` fixture amount. Login/CAPTCHA, pause/resume, navigation failure/retry, duplicate skipping, persistence and expanded AI overview were retained.
+
+Native Windows tests and public version 1.2.1 publication are pending. The workflow will exercise the actual packaged visible-price code before publishing. Results below belong to the preceding version.
+
+### Previous version 1.2.0
 
 Local version 1.2.0 checks passed on 2026-10-21:
 
@@ -55,4 +69,4 @@ Price, currency, region, coupons, taxes and shipping can affect the final checko
 
 Run the portable EXE, click Open Chromium / Login, and sign in. Set your country/currency, paste 8–10 full product links and Run. Each completed product should appear in Latest saved product and Downloads while later links continue.
 
-Inspect each ZIP: it should contain only `product.csv` and the `Images/` folder. Open the CSV and compare Title, Description, Variation and Price with the logged-in page. Where available, Description should contain the observed AI overview and its disclaimer; otherwise it should contain the lower seller description. Confirm the images open as JPEGs and variation filenames are readable. Review warnings in the app for unavailable fields or images.
+Inspect each ZIP: it should contain only `product.csv` and the `Images/` folder. Open the CSV and compare Title, Description and Variation with the logged-in page. Select each exported variation in Chromium and compare its visible current price with that row's Price. Confirm that missing or unconfirmed prices remain blank instead of receiving a hidden SKU amount. Increase Page / variation settling time if the page updates slowly. Where available, Description should contain the observed AI overview and its disclaimer; otherwise it should contain the lower seller description. Confirm the images open as JPEGs and variation filenames are readable. Review warnings in the app for unavailable fields or images.
