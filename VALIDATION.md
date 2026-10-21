@@ -1,4 +1,18 @@
-# Validation report — visible variation prices, CSV and JPEG export
+# Validation report — complete product fields and 30-link grid
+
+## Version 1.3.0
+
+Local unit validation passed: `npm test` ran 39 tests with no failures or skips. This includes the modern full-title/seven-point overview fixture, independent seller content, lazy/original image handling, preview-class exclusion regressions, per-variation image mapping, ten CSV fields, safe measured DOM-only variations and all earlier stale-price tests.
+
+The first full desktop product has verified all ten fields, six decodable JPEGs and independent seller DOM/endpoint/iframe content. The 30-product desktop run and native Windows build/live-page checks are still in progress; no success is claimed for those checks yet. Previous-version results below are historical.
+
+The new export contract is product.csv with Title, Description, Seller Description, Variation, Price, Size, Color, Features, Specifications and Images, plus actual JPEG files in Images/. Observed preferred AI overview and independent full seller description/images must both be retained. Visible main titles take precedence over stale background metadata. Per-variation prices require actual confirmed UI selections. Unknown values remain blank.
+
+Required checks cover spreadsheet-like 15/20/30-link paste, 30-product streaming, per-product titles, seven expanded AI points, independent seller DOM/endpoint/iframe text and images, exact size/color price rows, observed features/specifications, real JPEG bytes/dimensions and the native packaged Windows EXE. A separate anonymous live-product check must record its actual result rather than claiming a logged-in account test.
+
+The earlier version reports are retained below for history.
+
+## Previous visible-price releases
 
 ## Version 1.2.1 checks
 

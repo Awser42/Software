@@ -34,12 +34,18 @@ jobs:
         run: npm exec -- electron-builder --win --x64 --dir
       - name: Verify browser bytes and packaged runtime source
         run: node scripts/verify-package.js
-      - name: Practical desktop test using shipped Chromium (10-product batch)
+      - name: Practical desktop test using shipped Chromium (30-product batch)
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
       - name: Test packaged Windows EXE visible price, CSV and JPEG export
         run: node test/packaged.e2e.js
+      - name: Check live AliExpress product without an account
+        continue-on-error: true
+        env:
+          E2E_BUNDLED: '1'
+          LIVE_PRODUCT_URL: https://www.aliexpress.us/item/3256810248416998.html
+        run: node test/live-product.e2e.js
       - name: Create single-file EXE with Chromium included
         run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked
       - uses: actions/upload-artifact@v4
@@ -73,6 +79,16 @@ jobs:
         with:
           name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
           path: download
+      - uses: actions/download-artifact@v4
+        with:
+          name: practical-test-evidence
+          path: evidence
+      - name: Review live-page evidence
+        shell: bash
+        run: |
+          test -s evidence/live-product.json
+          jq -e '.status != "extraction-error" and .status != "error"' evidence/live-product.json
+          cp evidence/live-product.json download/Live-product-check.json
       - name: Prepare public EXE, ZIP and checksums from tested artifact
         shell: bash
         run: |
@@ -82,7 +98,8 @@ jobs:
           Extract this ZIP and run AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe.
           Chromium is included. No Node.js or separate browser download is needed.
           Open Chromium / Login, sign into AliExpress, choose a folder, paste URLs and Run.
-          Each product ZIP contains only product.csv (Title, Description, Variation, Price)
+          Each product ZIP contains product.csv with title, full preferred and seller descriptions,
+          variation, its visible price, size, color, features, specifications and image filenames
           and an Images folder of real JPEG files. Missing values stay blank.
           Description prefers the observed AliExpress AI overview, then seller text.
           Login and CAPTCHA are manual. Live account prices require your login.
@@ -98,13 +115,13 @@ jobs:
           cat > release-notes.md <<TEXT
           Windows 10/11 x64 portable app with Chromium included.
 
-          Each product ZIP now contains only product.csv with Title, Description, Variation and Price, plus Images/*.jpg. WebP/PNG sources are actually converted to JPEG. Variation filenames retain observed option names. Description prefers the visible AliExpress AI overview and falls back to seller text. Each known selectable variation is selected in Chromium and its confirmed visible current price is saved. Hidden catalog amounts are not substituted; unconfirmed variation prices stay blank. Earlier archives can be exported again to capture visible prices.
+          Each product ZIP contains product.csv with Title, Description, Seller Description, Variation, Price, Size, Color, Features, Specifications and Images, plus actual JPEG files in Images/. Paste 15, 20 or 30 product links directly into numbered spreadsheet-style cells and run the whole queue. WebP/PNG sources are actually converted to JPEG. Variation filenames retain observed option names. The full visible AliExpress AI overview is preferred, with seller text as fallback; the separate seller-description column and all exposed seller description images are captured independently. The visible product title takes priority over stale background metadata. Observed features/specifications are included when exposed. Each known selectable variation is selected in Chromium and its confirmed visible current price is saved. Hidden catalog amounts are not substituted; unconfirmed variation prices stay blank. Earlier archives can be exported again to capture visible prices.
 
           Download the EXE directly, or download and extract the Download.zip.
 
-          This exact artifact passed native Windows tests, including the ten-product desktop batch, actual JPEG decoding, visible variation prices and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          This exact artifact passed native Windows tests, including the 30-product desktop batch, actual JPEG decoding, visible variation prices and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Tested source: $TESTED_COMMIT
 
-          Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. The EXE is unsigned.
+          Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. See Live-product-check.json for the separate anonymous live-page result; verification/login may prevent that check. The EXE is unsigned.
           TEXT
-          gh release create "v$APP_VERSION" "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "download/AliExpress-Product-Archiver-$APP_VERSION-Download.zip" download/SHA256SUMS.txt --target "$TESTED_COMMIT" --title "Windows app $APP_VERSION - CSV and JPEG, Chromium included" --notes-file release-notes.md
+          gh release create "v$APP_VERSION" "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "download/AliExpress-Product-Archiver-$APP_VERSION-Download.zip" download/SHA256SUMS.txt download/Live-product-check.json --target "$TESTED_COMMIT" --title "Windows app $APP_VERSION - CSV and JPEG, Chromium included" --notes-file release-notes.md

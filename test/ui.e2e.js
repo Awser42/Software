@@ -4,62 +4,48 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
 const yauzl=require('yauzl');
+const {columns,points,disclaimer,productTitle,imageUrls,sellerDom,sellerEndpoint,sellerFrame}=require('./fixtures');
 function zipContents(file){return new Promise((resolve,reject)=>{yauzl.open(file,{lazyEntries:true},(error,zip)=>{if(error)return reject(error);const entries={};zip.on('error',reject);zip.on('end',()=>resolve(entries));zip.on('entry',entry=>{if(entry.fileName.endsWith('/')){zip.readEntry();return;}zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const chunks=[];stream.on('data',c=>chunks.push(c));stream.on('error',reject);stream.on('end',()=>{entries[entry.fileName]=Buffer.concat(chunks);zip.readEntry();});});});zip.readEntry();});});}
-async function verifyExport(file,instance){const contents=await zipContents(file);const names=Object.keys(contents);assert.equal(names.length,4);assert(names.includes('product.csv'));const text=contents['product.csv'].toString('utf8');assert(text.startsWith('\uFEFF"Title","Description","Variation","Price"'));assert(text.includes('Fixture Cotton Shirt'));assert(text.includes('Observed fixture AI overview description'));assert(text.includes('Expanded fixture bullet captured before scrolling.'));assert(!text.includes('Lower seller detail'));assert(text.includes('Color: Blue'));assert(text.includes('$8.15'));assert(!text.includes('99.00'));assert(!text.includes('12.34'));for(const name of names.filter(n=>n!=='product.csv')){assert(/^Images\/.+\.jpg$/.test(name));assert.equal(contents[name].readUInt16BE(0),0xffd8);const decoded=await instance.evaluate(({nativeImage},base64)=>{const image=nativeImage.createFromBuffer(Buffer.from(base64,'base64'));return {empty:image.isEmpty(),...image.getSize()};},contents[name].toString('base64'));assert.deepEqual(decoded,{empty:false,width:20,height:12});}}
-async function until(fn,timeout=20000){const start=Date.now();while(Date.now()-start<timeout){if(await fn())return;await new Promise(r=>setTimeout(r,100));}throw new Error('Timed out waiting for expected state');}
+function parseCsv(bytes){const s=bytes.toString('utf8').replace(/^\uFEFF/,'');const result=[];let row=[],cell='',quoted=false;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(quoted&&s[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(cell);cell='';}else if(c==='\r'&&s[i+1]==='\n'&&!quoted){row.push(cell);result.push(row);row=[];cell='';i++;}else cell+=c;}row.push(cell);result.push(row);return result;}
+async function verifyExport(download,instance){
+ const id=download.productId;const contents=await zipContents(download.path);const names=Object.keys(contents);assert.equal(names.length,7,`CSV and six source images for product ${id}`);assert(names.includes('product.csv'));
+ const table=parseCsv(contents['product.csv']);assert.deepEqual(table[0],columns);const rows=table.slice(1).map(row=>Object.fromEntries(columns.map((column,index)=>[column,row[index]])));assert.equal(rows.length,2);
+ for(const row of rows){
+  assert.equal(row.Title,productTitle(id));assert(row.Description.includes('AI overview of item'));assert(row.Description.includes(disclaimer));for(const [heading,text] of points){assert(row.Description.includes(heading),heading);assert(row.Description.includes(text),heading);assert(row.Features.includes(heading),`Feature ${heading}`);}assert(!row.Description.includes(sellerDom(id)));
+  for(const text of [sellerDom(id),sellerEndpoint(id),sellerFrame(id)])assert(row['Seller Description'].includes(text),`Full seller text: ${text}`);
+  assert(!row['Seller Description'].includes('unwantedSellerScript'));assert.equal(row.Color,'Blue');assert(row.Variation.includes('Color: Blue'));assert(row.Variation.includes(`Size: ${row.Size}`));assert.equal(row.Price,row.Size==='20*20cm'?'$8.15':'$6.40');
+  assert(row.Specifications.includes('Material: Cotton'));assert(row.Specifications.includes('CN: Zhejiang'));assert(row.Specifications.includes(`Product ID: ${id}`));
+  const images=row.Images.split(/\r?\n/).filter(Boolean);assert.equal(images.length,6);assert.equal(new Set(images).size,6);assert(/variation-Color-Blue/i.test(images[0]));for(const file of images)assert(contents[file],`CSV points to saved image ${file}`);
+ }
+ assert.deepEqual(new Set(rows.map(row=>row.Size)),new Set(['20*20cm','15X15cm']));assert(!contents['product.csv'].toString().includes('STALE recommendation'));assert(!rows.some(row=>/99\.00|88\.00/.test(row.Price)));
+ for(const name of names.filter(name=>name!=='product.csv')){assert(/^Images\/.+\.jpg$/.test(name));assert.equal(contents[name].readUInt16BE(0),0xffd8);const decoded=await instance.evaluate(({nativeImage},base64)=>{const image=nativeImage.createFromBuffer(Buffer.from(base64,'base64'));return {empty:image.isEmpty(),...image.getSize()};},contents[name].toString('base64'));assert.deepEqual(decoded,{empty:false,width:20,height:12});}
+}
+async function until(fn,timeout=30000){const start=Date.now();while(Date.now()-start<timeout){if(await fn())return;await new Promise(resolve=>setTimeout(resolve,100));}throw new Error('Timed out waiting for expected state');}
+async function pasteCells(page,text,index=0){const cell=page.locator('.link-url').nth(index);if(!/[\r\n\t]/.test(text)){await cell.fill(text);return;}await cell.focus();await cell.evaluate((element,text)=>{const clipboardData=new DataTransfer();clipboardData.setData('text/plain',text);element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData}));},text);}
+async function clearLinks(page){await page.locator('[data-tab="bulk"]').click();await page.locator('#clearLinks').click();}
 (async()=>{
- const data=await fs.mkdtemp(path.join(os.tmpdir(),'archiver-ui-'));
- const executablePath=process.env.TEST_ELECTRON || require('electron');
- const instance=await electron.launch({executablePath,args:[path.resolve('test/electron-harness.js')],env:{...process.env,E2E_DATA:data,DISPLAY:process.env.DISPLAY||':99'}});
- try {
-  const page=await instance.firstWindow();await page.waitForSelector('#urls');
+ const data=await fs.mkdtemp(path.join(os.tmpdir(),'archiver-ui-'));const instance=await electron.launch({executablePath:process.env.TEST_ELECTRON||require('electron'),args:[path.resolve('test/electron-harness.js')],env:{...process.env,E2E_DATA:data,DISPLAY:process.env.DISPLAY||':99'}});
+ try{
+  const page=await instance.firstWindow();await page.waitForSelector('.link-url');assert.equal(await page.locator('#urlGrid').isVisible(),true);
+  for(const count of [15,20]){await clearLinks(page);await page.locator('#rowCount').selectOption(String(count));assert.equal(await page.locator('.link-url').count(),count);const urls=Array.from({length:count},(_,i)=>`https://www.aliexpress.com/item/${500+i}.html`);await pasteCells(page,urls.join(count===20?'\t':'\n'));assert.equal(await page.locator('.link-url').nth(count-1).inputValue(),urls[count-1]);assert.equal(await page.locator('.link-status[data-state="ready"]').count(),count);}
+  await clearLinks(page);assert.equal(await page.locator('.link-url').count(),30);await page.locator('.link-url').first().focus();await page.locator('.link-url').first().press('Enter');assert.equal(await page.locator('.link-url').nth(1).evaluate(element=>element===document.activeElement),true);await clearLinks(page);
   await page.locator('[data-tab="settings"]').click();await page.locator('#settle').fill('1');await page.locator('#delay').fill('0.5');await page.locator('#saveSettings').click();
-  const out=path.join(data,'archives');
-  // Exercise the actual native-folder IPC; replace only the OS picker result.
-  await instance.evaluate(({dialog},out)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[out]});},out);
-  await page.locator('[data-tab="bulk"]').click();await page.locator('#chooseFolder').click();await until(()=>page.locator('#folderLabel').textContent().then(t=>t===out));
-  await page.locator('#urls').fill('https://www.aliexpress.com/item/1.html\nhttps://www.aliexpress.us/item/1.html\nhttps://evil.test/item/1.html');await page.locator('#run').click();
-  await page.locator('#manual').waitFor({state:'visible',timeout:20000});
-  assert((await page.locator('#manualText').textContent()).includes('CAPTCHA'));
-  await page.locator('#pause').click();await until(()=>page.locator('#summary').textContent().then(t=>t.startsWith('Paused')));
-  // Manual completion in the actual separate Chromium page.
-  await instance.evaluate(async()=>{await global.fixturePage.goto('https://www.aliexpress.com/verified');await global.fixturePage.goto('https://www.aliexpress.com/item/1.html');});
-  await page.locator('#continue').click();await page.locator('#resume').click();
-  await until(()=>page.locator('#statDone').textContent().then(t=>t==='1'));
-  await until(()=>page.locator('#summary').textContent().then(t=>t.startsWith('Idle')));
-  const zips=(await fs.readdir(out)).filter(n=>n.endsWith('.zip'));assert.equal(zips.length,1);await verifyExport(path.join(out,zips[0]),instance);
-  await page.locator('[data-tab="downloads"]').click();assert.equal(await page.locator('.download-card').count(),1);assert.equal(await page.locator('.preview img').count(),1);
-  await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/downloads.png',fullPage:true});
-  await page.locator('[data-tab="bulk"]').click();await page.locator('#urls').fill('https://www.aliexpress.com/item/1.html');await page.locator('#run').click();assert((await page.locator('#notice').textContent()).includes('1 duplicates'));
-  await page.screenshot({path:'test-results/bulk-links.png',fullPage:true});
-  await page.locator('#urls').fill('https://www.aliexpress.com/item/2.html');await page.locator('#run').click();
-  await until(()=>page.locator('#statFailed').textContent().then(t=>t==='1'));
-  await until(()=>page.locator('#summary').textContent().then(t=>t.startsWith('Idle')));
-  assert((await page.locator('#items').innerText()).includes('Product navigation failed'));
-  await page.locator('#retry').click();
-  await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return current.state.items[1].attempts===2&&!current.state.running;});
-  assert.equal((await fs.readdir(out)).filter(n=>n.endsWith('.zip')).length,1);
-  const disk=JSON.parse(await fs.readFile(path.join(data,'state.json'),'utf8'));assert.equal(disk.downloads.length,1);assert.equal(disk.items[0].status,'done');assert.equal(disk.settings.output,out);
-  assert.equal(disk.items[1].attempts,2);assert.equal(disk.items[1].status,'failed');
-  await page.locator('[data-tab="bulk"]').click();
-  await page.locator('#urls').fill(Array.from({length:10},(_,i)=>`https://www.aliexpress.com/item/${101+i}.html`).join('\n'));
-  await page.locator('#run').click();
-  await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return current.state.downloads.length>=2;});
-  const midway=await page.evaluate(()=>window.desktop.call('initial'));
-  assert(midway.state.running,'Batch must still be running when the first new ZIP becomes available');
-  assert(midway.state.items.some(i=>i.status==='pending'),'Remaining products must still be queued');
-  const firstNew=midway.state.downloads[0];await fs.access(firstNew.path);
-  assert.equal(await page.locator('#latestExport').isVisible(),true);
-  await page.screenshot({path:'test-results/bulk-in-progress.png',fullPage:true});
-  await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return !current.state.running&&current.state.downloads.length===11;},90000);
-  const complete=JSON.parse(await fs.readFile(path.join(data,'state.json'),'utf8'));
-  assert.equal(complete.items.filter(i=>i.status==='done').length,11);
-  assert.equal((await fs.readdir(out)).filter(n=>n.endsWith('.zip')).length,11);
-  assert.equal(new Set(complete.downloads.map(d=>d.productId)).size,11);
-  for(const download of complete.downloads){assert.equal(download.exportFormat,'csv-jpeg-v1');assert.equal(download.priceMode,'visible-variation-v1');await verifyExport(download.path,instance);}
-  console.log('PASS: ten-product bulk batch publishes each ZIP while remaining products continue in one Chromium session; every ZIP contains only a four-column CSV and decoded original-size JPEGs converted from WebP by the production codec.');
-  console.log('PASS: Electron tabs, settings, folder picker IPC, bulk input, invalid URL, duplicate skipping, real Chromium manual gate, pause/resume, extraction, ZIP, preview, navigation failure, retry, persistence.');
- } catch(e) {
-  const page=await instance.firstWindow();console.error('UI diagnostic:',await page.locator('body').innerText());throw e;
- } finally {await instance.close();await fs.rm(data,{recursive:true,force:true});}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+  const out=path.join(data,'archives');await instance.evaluate(({dialog},out)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[out]});},out);
+  await page.locator('[data-tab="bulk"]').click();await page.locator('#chooseFolder').click();await until(()=>page.locator('#folderLabel').textContent().then(text=>text===out));
+  await pasteCells(page,'https://www.aliexpress.com/item/1.html\nhttps://www.aliexpress.us/item/1.html\nhttps://evil.test/item/1.html');await page.locator('#run').click();await page.locator('#manual').waitFor({state:'visible',timeout:30000});assert((await page.locator('#manualText').textContent()).includes('CAPTCHA'));
+  await page.locator('#pause').click();await until(()=>page.locator('#summary').textContent().then(text=>text.startsWith('Paused')));await instance.evaluate(async()=>{await global.fixturePage.goto('https://www.aliexpress.com/verified');await global.fixturePage.goto('https://www.aliexpress.com/item/1.html');});await page.locator('#continue').click();await page.locator('#resume').click();await until(()=>page.locator('#statDone').textContent().then(text=>text==='1'));await until(()=>page.locator('#summary').textContent().then(text=>text.startsWith('Idle')));
+  let disk=JSON.parse(await fs.readFile(path.join(data,'state.json'),'utf8'));assert.equal(disk.downloads.length,1);await verifyExport(disk.downloads[0],instance);
+  await page.locator('[data-tab="downloads"]').click();assert.equal(await page.locator('.download-card').count(),1);assert.equal(await page.locator('.preview img').count(),1);await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/downloads.png',fullPage:true});
+  await page.locator('[data-tab="bulk"]').click();await clearLinks(page);await pasteCells(page,'https://www.aliexpress.com/item/1.html');await page.locator('#run').click();await until(()=>page.locator('#notice').textContent().then(text=>text.includes('1 duplicates')));await page.screenshot({path:'test-results/bulk-links.png',fullPage:true});
+  await clearLinks(page);await pasteCells(page,'https://www.aliexpress.com/item/2.html');await page.locator('#run').click();await until(()=>page.locator('#statFailed').textContent().then(text=>text==='1'));await until(()=>page.locator('#summary').textContent().then(text=>text.startsWith('Idle')));assert((await page.locator('#items').innerText()).includes('Product navigation failed'));await page.locator('#retry').click();await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return current.state.items[1].attempts===2&&!current.state.running;});assert.equal((await fs.readdir(out)).filter(name=>name.endsWith('.zip')).length,1);
+  disk=JSON.parse(await fs.readFile(path.join(data,'state.json'),'utf8'));assert.equal(disk.items[1].status,'failed');assert.equal(disk.settings.output,out);
+  await clearLinks(page);await page.locator('#rowCount').selectOption('30');const urls=Array.from({length:30},(_,i)=>`https://www.aliexpress.com/item/${101+i}.html`);const tsv=Array.from({length:10},(_,i)=>urls.slice(i*3,i*3+3).join('\t')).join('\n');await pasteCells(page,tsv);assert.equal(await page.locator('.link-url').nth(29).inputValue(),urls[29]);assert.equal(await page.locator('.link-status[data-state="ready"]').count(),30);await page.screenshot({path:'test-results/thirty-link-grid.png',fullPage:true});await page.locator('#run').click();
+  await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return current.state.downloads.length>=2;});const midway=await page.evaluate(()=>window.desktop.call('initial'));assert(midway.state.running);assert(midway.state.items.some(item=>item.status==='pending'));await fs.access(midway.state.downloads[0].path);assert.equal(await page.locator('#latestExport').isVisible(),true);await page.screenshot({path:'test-results/bulk-in-progress.png',fullPage:true});
+  await until(async()=>{const current=await page.evaluate(()=>window.desktop.call('initial'));return !current.state.running&&current.state.downloads.length===31;},450000);
+  const complete=JSON.parse(await fs.readFile(path.join(data,'state.json'),'utf8'));assert.equal(complete.items.filter(item=>item.status==='done').length,31);assert.equal((await fs.readdir(out)).filter(name=>name.endsWith('.zip')).length,31);assert.equal(new Set(complete.downloads.map(download=>download.productId)).size,31);
+  const requests=await instance.evaluate(()=>global.fixtureRequests);const frames=await instance.evaluate(()=>global.fixtureFrames);
+  for(const download of complete.downloads){assert.equal(download.exportFormat,'product-csv-jpeg-v2');assert.equal(download.priceMode,'visible-variation-v1');await verifyExport(download,instance);for(const url of Object.values(imageUrls(download.productId)))assert(requests.includes(url),`Original source image was requested: ${url}`);assert(requests.includes(`https://www.aliexpress.com/description/endpoint-${download.productId}.html`));assert(frames.includes(`https://www.aliexpress.com/description/frame-${download.productId}.html`));}
+  console.log('PASS: visible Excel-style cells accept 15/20/30 links and a 30-product batch saves each ZIP while the remaining products continue. All 31 ZIPs contain the complete ten-column CSV and six real JPEG images each; per-product titles, seven expanded AI points, complete independent seller text, sizes, colors, visible prices and specifications match their sources.');
+  console.log('PASS: manual Chromium login gate, folder picker, settings, duplicate skipping, pause/resume, navigation failure, retry, previews and persistence.');
+ }catch(error){const page=await instance.firstWindow();console.error('UI diagnostic:',await page.locator('body').innerText());throw error;}finally{await instance.close();await fs.rm(data,{recursive:true,force:true});}
+})().catch(error=>{console.error(error);process.exitCode=1;});

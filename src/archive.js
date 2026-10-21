@@ -49,20 +49,45 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-function productRows(product) {
-  const base = {Title:product.title || '', Description:product.descriptionText || ''};
-  const variants = product.variations || [];
-  const visibleMode = product.prices?.mode === 'visible-variation';
-  const rows = variants.map(v => ({...base, Variation:v.name || v.attributes || v.skuId || '', Price:money(visibleMode ? v.displayedPrice : v.price)}));
-  if (!variants.length) {
-    for (const property of product.properties || []) for (const value of property.values || []) {
-      if (value.name) rows.push({...base, Variation:[property.name,value.name].filter(Boolean).join(': '), Price:''});
+const EXPORT_FORMAT='product-csv-jpeg-v2';
+const COLUMNS=['Title','Description','Seller Description','Variation','Price','Size','Color','Features','Specifications','Images'];
+const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
+function variantOptions(product,variant) {
+  if (variant?.observedOptions?.length) return variant.observedOptions;
+  const options=[];
+  for (const pair of String(variant?.attributes||'').split(';').filter(Boolean)) {
+    const [pid,rest='']=pair.trim().split(':'); const vid=rest.split('#')[0];
+    const prop=(product.properties||[]).find(p=>String(p.id)===pid);
+    const val=prop?.values?.find(v=>String(v.id)===vid);
+    if (val) options.push({name:prop.name,value:val.name,propertyId:pid,id:vid,image:val.image});
+  }
+  return options;
+}
+function rowImages(product,variant,options) {
+  const assets=(product.assets||[]).filter(a=>a.status==='downloaded');
+  if (!variant) return [...new Set(assets.map(a=>a.file))].join('\n');
+  const urls=new Set(variant.observedImageUrls||[]);
+  for (const option of options) {
+    if (option.image) urls.add(option.image);
+    for (const p of product.properties||[]) if ((option.propertyId&&String(p.id)===String(option.propertyId)) || String(p.name).toLowerCase()===String(option.name).toLowerCase()) {
+      for (const v of p.values||[]) if ((option.id&&String(v.id)===String(option.id)) || v.name===option.value) if (v.image) urls.add(v.image);
     }
   }
-  // A separate blank-variation row retains an exposed product-level price when
-  // no per-SKU prices were exposed. It does not claim to price any option.
+  const matched=assets.filter(a=>urls.has(a.url));
+  const common=assets.filter(a=>a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url));
+  return [...new Set([...matched,...common].map(a=>a.file))].join('\n');
+}
+function productRows(product) {
+  const base={Title:product.title||'',Description:product.descriptionText||'','Seller Description':product.sellerDescriptionText||'',Features:lines(product.features),Specifications:lines(product.specifications)};
+  const variants=product.variations||[];const visibleMode=product.prices?.mode==='visible-variation';
+  const row=(variant,name,price,options=[])=>({...base,Variation:name,Price:price,
+    Size:lines(options.filter(o=>/size|dimension|尺寸/i.test(o.name)).map(o=>o.value)),
+    Color:lines(options.filter(o=>/colou?r|颜色/i.test(o.name)).map(o=>o.value)),
+    Images:rowImages(product,variant,options)});
+  const rows=variants.map(v=>row(v,v.name||v.attributes||v.skuId||'',money(visibleMode?v.displayedPrice:v.price),variantOptions(product,v)));
+  if (!variants.length) for (const p of product.properties||[]) for (const v of p.values||[]) if (v.name) rows.push(row({},[p.name,v.name].filter(Boolean).join(': '),'',[{name:p.name,value:v.name,propertyId:p.id,id:v.id,image:v.image}]));
   const productPrice=observedProductPrice(product.prices);
-  if (!rows.length || (visibleMode ? product.prices.displayedUnassigned && productPrice : !rows.some(row=>row.Price))) rows.unshift({...base,Variation:'',Price:productPrice});
+  if (!rows.length || (visibleMode?product.prices.displayedUnassigned&&productPrice:!rows.some(r=>r.Price))) rows.unshift(row(null,'',productPrice));
   return rows;
 }
 async function makeArchive(product, output, request, checkpoint = async () => {}, encodeJpeg) {
@@ -75,11 +100,12 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
   product.assets = []; product.warnings ||= [];
   try {
     // Prioritize variation names when the same URL is also a gallery image.
-    const variants = (product.properties || []).flatMap(p => (p.values || []).filter(v => v.image).map(v => ({url:v.image, label:`variation-${safeName([p.name,v.name].filter(Boolean).join('-'))}`})));
-    const images = [...variants, ...(product.images || []).map(url=>({url,label:'main'})), ...(product.descriptionImages || []).map(url=>({url,label:'description'}))];
+    const variants = (product.properties || []).flatMap(p => (p.values || []).filter(v => v.image).map(v => ({url:v.image,kind:'variation', label:`variation-${safeName([p.name,v.name].filter(Boolean).join('-'))}`})));
+    const measuredVariants=(product.variations||[]).flatMap(v=>(v.observedImageUrls||[]).map(url=>({url,kind:'variation',label:`variation-${safeName(v.name)}`})));
+    const images = [...variants,...measuredVariants, ...(product.images || []).map(url=>({url,kind:'main',label:'main'})), ...(product.descriptionImages || []).map(url=>({url,kind:'description',label:'description'}))];
     const attempted = new Set(); let index = 0;
     const imageHost = url => /^https?:$/.test(url.protocol) && /(^|\.)(alicdn\.com|aliexpress-media\.com|aliexpress\.(com|us))$/i.test(url.hostname);
-    for (const {url,label} of images) {
+    for (const {url,label,kind} of images) {
       await checkpoint();
       if (attempted.has(url)) continue;
       attempted.add(url);
@@ -101,14 +127,15 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
         await fsp.mkdir(path.join(stage, 'Images'), {recursive:true});
         await fsp.writeFile(path.join(stage,file),bytes);
         files.push(file);
-        product.assets.push({url,file,status:'downloaded',bytes:bytes.length});
+        product.assets.push({url,file,kind,status:'downloaded',bytes:bytes.length});
         if (!preview && bytes.length < 2*1024*1024) preview = `data:image/jpeg;base64,${bytes.toString('base64')}`;
       } catch (error) {
         product.assets.push({url,file:null,status:'failed',error:error.message});
         product.warnings.push(`Image unavailable: ${url} (${error.message})`);
       }
     }
-    await fsp.writeFile(path.join(stage,'product.csv'),csv(productRows(product),['Title','Description','Variation','Price']));
+    const rows=productRows(product);
+    await fsp.writeFile(path.join(stage,'product.csv'),csv(rows,COLUMNS));
     await new Promise((resolve,reject) => {
       const dest = fs.createWriteStream(tempZip,{flags:'wx'}); const zip = archiver('zip',{zlib:{level:6}});
       dest.on('close',resolve); dest.on('error',reject); zip.on('error',reject); zip.on('warning',reject);
@@ -119,7 +146,7 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       try { await fsp.copyFile(tempZip,finalPath,fs.constants.COPYFILE_EXCL); break; }
       catch (e) { if (e.code !== 'EEXIST') throw e; finalPath=path.join(output,`${name}-${i}.zip`); }
     }
-    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,preview,capturedAt:product.capturedAt,exportFormat:'csv-jpeg-v1',priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
+    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,preview,capturedAt:product.capturedAt,exportFormat:EXPORT_FORMAT,rowCount:rows.length,descriptionPreview:(product.descriptionText||'').slice(0,1000),sellerDescriptionPreview:(product.sellerDescriptionText||'').slice(0,600),specificationCount:(product.specifications||[]).length,featureCount:(product.features||[]).length,detailsPreview:rows.slice(0,5).map(r=>({title:r.Title,variation:r.Variation,price:r.Price,size:r.Size,color:r.Color})),priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
   } finally {
     await fsp.rm(stage,{recursive:true,force:true}); await fsp.rm(tempZip,{force:true});
   }

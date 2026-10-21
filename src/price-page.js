@@ -13,7 +13,7 @@ function inspectPricePage(selection) {
   const excluded = element => {
     for (let node = element; node && node !== document.body; node = node.parentElement) {
       if (['DEL', 'S', 'STRIKE', 'ASIDE', 'HEADER', 'FOOTER', 'NAV'].includes(node.tagName)) return true;
-      if (/recommend|related|sidebar|shipping|delivery|coupon|discount|original|old[-_]?price|crossed|strikethrough|review/i.test(String(node.className || ''))) return true;
+      if (/recommend|related|sidebar|shipping|delivery|coupon|discount|original|old[-_]?price|crossed|strikethrough|(?:^|[\s_-])reviews?(?:[\s_-]|$)/i.test(String(node.className || ''))) return true;
       if (getComputedStyle(node).textDecorationLine.includes('line-through')) return true;
     }
     return false;
@@ -79,7 +79,9 @@ function inspectPricePage(selection) {
       const id = qualifiedId(explicitId)?.value || explicitId || qualified?.value || '';
       const image = node.querySelector('img');
       const name = firstAttribute(node, ['data-value-name', 'title']) || normalize(image?.getAttribute('alt')) || visibleText(node) || normalize(node.getAttribute('aria-label'));
-      return {id, name, selected:selectedOption(node), disabled:disabledOption(node), index, element:node, qualifiedGroup:qualified?.group || ''};
+      let imageUrl=null;
+      try { const source=image?.getAttribute('data-original') || image?.getAttribute('data-src') || image?.getAttribute('data-lazy-src') || image?.getAttribute('src') || image?.currentSrc; if(source) { const original=source.replace(/(\.(?:jpe?g|png|webp|avif))_\d+x\d+[^/?]*(?=\?|$)/i,'$1'); const url=new URL(original,location.href); if(/^https?:$/.test(url.protocol)) imageUrl=url.href; } } catch {}
+      return {id, name, image:imageUrl, selected:selectedOption(node), disabled:disabledOption(node), index, element:node, qualifiedGroup:qualified?.group || ''};
     }).filter(value => value.id || value.name);
     if (!values.length) continue;
     const qualifiedGroups = [...new Set(values.map(value => value.qualifiedGroup).filter(Boolean))];
@@ -208,7 +210,7 @@ function inspectPricePage(selection) {
     displayed:current?.text || null,
     loading,
     revision:Number(window.__archiverPriceWatch?.revision) || 0,
-    groups:groups.map(({id, name, values}) => ({id, name, values:values.map(({id, name, selected, disabled, index}) => ({id, name, selected, disabled, index}))})),
+    groups:groups.map(({id, name, values}) => ({id, name, values:values.map(({id, name, image, selected, disabled, index}) => ({id, name, image, selected, disabled, index}))})),
     selectedSkuId:uniqueSelectedIds.length === 1 ? uniqueSelectedIds[0] : null,
     productId:location.pathname.match(/\/(?:item|i)\/(\d+)\.html/i)?.[1] || null
   };

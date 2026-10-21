@@ -1,24 +1,24 @@
 # AliExpress Product Archiver
 
-Windows desktop app built with Electron and Playwright Chromium. Paste 8, 10, or more AliExpress links and save each product as soon as it finishes. A visible Chromium window keeps your login session and lets you complete CAPTCHA yourself.
+Windows desktop app built with Electron and Playwright Chromium. Paste 15, 20, 30 or more AliExpress links and save each product as soon as it finishes. A visible Chromium window keeps your login session and lets you complete CAPTCHA yourself.
 
 ## Run on Windows
 
-Download version 1.2.1 from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Node.js and a separate Chromium installation are not needed.
+Download version 1.3.0 from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Node.js and a separate Chromium installation are not needed.
 
-- Run `AliExpress-Product-Archiver-1.2.1-win-x64.exe` directly. This portable launcher includes Chromium and extracts its runtime resources temporarily.
-- If you download `AliExpress-Product-Archiver-1.2.1-Download.zip`, extract it first, then run the portable EXE inside.
-- A developer-built `AliExpress-Product-Archiver-1.2.1-win-x64.zip` is a folder distribution. Extract its entire contents and keep `AliExpress Product Archiver.exe` beside its supporting files.
+- Run `AliExpress-Product-Archiver-1.3.0-win-x64.exe` directly. This portable launcher includes Chromium and extracts its runtime resources temporarily.
+- If you download `AliExpress-Product-Archiver-1.3.0-Download.zip`, extract it first, then run the portable EXE inside.
+- A developer-built `AliExpress-Product-Archiver-1.3.0-win-x64.zip` is a folder distribution. Extract its entire contents and keep `AliExpress Product Archiver.exe` beside its supporting files.
 
 The release is unsigned. The app saves settings and your Chromium profile under your Windows user account.
 
 1. Click **Open Chromium / Login** and log into AliExpress in that window.
 2. Choose your delivery country and currency in AliExpress. The app reads the visible current price for each variation it can select and confirm in that session.
-3. Choose an output folder, paste one full product URL per line, and click **Run extraction**.
+3. Choose an output folder, paste full product URLs into the numbered link cells (newlines or Excel columns paste into consecutive rows), and click **Run all links**.
 4. If verification appears, complete it in Chromium, then click **Continue after login / CAPTCHA** in Progress. If you paused, also click Resume.
 5. Open each finished ZIP from Latest saved product or Downloads while the remaining links continue.
 
-**Urdu:** Chromium mein apna AliExpress account login karein, folder choose karein, phir links paste karke Run karein. Har product ki ZIP alag save hoti rahegi. CSV mein title, description, variation aur us variation ko select karne par nazar aane wali price hogi; images alag `Images/` folder mein JPEG hongi. Jo data available nahi hoga woh banaya nahi jayega.
+**Urdu:** Chromium mein apna AliExpress account login karein, folder choose karein, phir links paste karke Run karein. Har product ki ZIP alag save hoti rahegi. CSV mein title, description, variation aur us variation ko select karne par nazar aane wali price hogi; sizes, colors, features/specifications aur seller description bhi available hon to CSV mein hongi; images alag `Images/` folder mein JPEG hongi. Jo data available nahi hoga woh banaya nahi jayega.
 
 ## Export contents
 
@@ -26,16 +26,16 @@ Every ZIP contains only these outputs:
 
 | File/folder | Contents |
 | --- | --- |
-| `product.csv` | Exactly four columns: `Title`, `Description`, `Variation`, `Price` |
+| `product.csv` | `Title`, `Description`, `Seller Description`, `Variation`, `Price`, `Size`, `Color`, `Features`, `Specifications`, `Images` |
 | `Images/` | Available main, variation and description images, saved as real `.jpg` JPEG files |
 
-The ZIP filename uses the product title and product ID. Existing files are never overwritten. The UTF-8 CSV includes a BOM for Excel, quotes multiline descriptions and escapes spreadsheet formulas. Title and description repeat across variation rows so each row can be read independently. Variation names come from the observed product data. For each known variation that can be selected and confirmed, Price is read from the visible current-price field after the page settles. Missing or unconfirmed prices stay blank. A generic displayed price is not assigned to other variations, and unseen option combinations are not invented. Price text retains the displayed currency.
+The ZIP filename uses the product title and product ID. Existing files are never overwritten. The UTF-8 CSV includes a BOM for Excel, quotes multiline descriptions and escapes spreadsheet formulas. Title, preferred description, seller description, observed features and specifications repeat across variation rows so each row can be read independently. Variation names come from the observed product data. For each known variation that can be selected and confirmed, Price is read from the visible current-price field after the page settles. Missing or unconfirmed prices stay blank. A generic displayed price is not assigned to other variations, and unseen option combinations are not invented. Price text retains the displayed currency.
 
-For Description, the app first uses the visible AliExpress **AI overview of item**, including its observed disclaimer and bullet text. This is content displayed by AliExpress; the app does not generate a summary. If no substantive overview is available, it uses the seller description lower on the page. If neither is exposed, Description stays blank.
+For Description, the app first uses the visible AliExpress **AI overview of item**, including its observed disclaimer and bullet text. This is content displayed by AliExpress; the app does not generate a summary. If no substantive overview is available, it uses the seller description lower on the page. If neither is exposed, Description stays blank. The independent Seller Description column retains the full exposed seller text even when the AI overview is preferred. Description images from the seller HTML endpoint and description frames are still downloaded. Features and Specifications contain only observed text, never inferred facts from product photos.
 
 Available image URLs use the original/CDN size where exposed. Recognized thumbnail suffixes are removed. WebP, PNG and other supported source formats are decoded and converted to JPEG; changing a filename alone is not conversion. JPEG conversion keeps the available image dimensions, with a white background for transparency. Variation filenames include readable observed option names. Duplicate image URLs are downloaded once. An original that AliExpress does not expose cannot be recovered. Failed downloads or conversions appear as warnings in the app while the remaining output is saved.
 
-JSON, HTML, specifications, extra CSVs and text reports are not included in the product ZIP. Older CSV/JPEG downloads keep their **CSV + JPEG** label; older output formats appear as **Earlier archive**. Links captured before version 1.2.1 can be added again with duplicate skipping enabled to capture visible variation prices. Existing ZIPs remain available.
+JSON, HTML, extra CSVs and text reports are not included in the product ZIP. Older CSV/JPEG downloads keep their **CSV + JPEG** label; older output formats appear as **Earlier archive**. Links captured before version 1.3.0 can be added again with duplicate skipping enabled to capture visible variation prices. Existing ZIPs remain available. Size and Color identify the options for that row; Images contains matching variation-image paths followed by available main/description JPEG paths. Downloads includes an expandable preview of descriptions and variation prices.
 
 ## Prices and completeness
 
@@ -43,7 +43,7 @@ Price comes from the **visible current price for the selected variation** in you
 
 For example, if selecting `20*20cm` shows `$8.15`, that variation's row uses `$8.15`. Selecting `15X15cm` must supply its own visible price; `$8.15` is not copied to it. This example explains the capture rule and is not a claim that a live account was tested.
 
-Known SKU combinations are visited as exposed. A page with only one observed option group can be measured option by option. Without known SKU combinations, multiple option groups are not expanded into invented combinations. The **Page / variation settling time** setting applies after each selection as well as the initial page load, so products with many variations take longer. Increase it if AliExpress updates prices slowly.
+Known SKU combinations are visited as exposed. A page with only one observed option group can be measured option by option. Without SKU records, the app can explore actual enabled UI selections one change at a time and exports only full combinations whose visible price is confirmed, up to 200 observed rows. Disabled choices are skipped; uncertain updates stop further price discovery. Incomplete starting selections with multiple required groups may remain unconfirmed, with a warning. No combinations or prices are generated from a Cartesian product. The **Page / variation settling time** setting applies after each selection as well as the initial page load, so products with many variations take longer. Increase it if AliExpress updates prices slowly.
 
 These observations are not a guaranteed checkout total. Shipping, taxes, coupons, new-user discounts, delivery destination, currency and the selected variation can affect the amount. The app does not perform checkout, convert currency or estimate a missing cost.
 
@@ -92,7 +92,7 @@ The bundled release uses maximum compression and English interface language pack
 
 ### Desktop integration tests
 
-`test/ui.e2e.js` exercises the real Electron UI, production Chromium launcher, queue and archive pipeline. External product content, image transport and the native folder-picker result use controlled fixtures. It tests a ten-product batch and checks that the first ZIP is available while later products continue.
+`test/ui.e2e.js` exercises the real Electron UI, production Chromium launcher, queue and archive pipeline. External product content, image transport and the native folder-picker result use controlled fixtures. It tests a 30-product batch and checks that the first ZIP is available while later products continue.
 
 On Windows, install the test browser and run:
 
@@ -119,3 +119,9 @@ The app uses Electron's per-user data directory, normally under `%APPDATA%`, for
 - **Output folder fails:** choose a writable local folder. Temporary files are cleaned after ordinary errors. A crash may leave `.archive-*` or `.zip.partial` files; remove these only while no run is active.
 
 Extraction is sequential, with a configurable delay. Login and CAPTCHA completion are manual.
+
+## Link cells and complete exports
+
+Bulk Links starts with 30 numbered cells. Choose 15/20/30 rows, add more rows, or paste a newline/TSV list from Excel into any cell; remaining links fill subsequent rows. Enter moves down, Shift+Enter moves up. Each row shows validation and queue status. Run all links processes the queue automatically and publishes each ZIP as it finishes. The secondary Paste many links box also accepts one link per line.
+
+Version 1.3.0 exports can recapture older links with duplicate skipping enabled because older CSV formats do not include all the new fields. Images are downloaded from exposed image URLs; the app does not perform OCR or invent descriptions/specifications from a photograph. Login and CAPTCHA completion remain manual in Chromium. `Live-product-check.json` in the release records the separate anonymous live-page check; it is distinct from the controlled 30-product desktop tests and does not establish your account-specific price.

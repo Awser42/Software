@@ -1,7 +1,7 @@
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const {spawn} = require('node:child_process');
-const {extractPage, parseDescription, captureOverview} = require('./extract');
+const {extractPage, parseDescription, captureOverview, captureProductDetails} = require('./extract');
 const {convertToJpeg} = require('./jpeg');
 const {captureVisiblePrices} = require('./prices');
 const {makeArchive} = require('./archive');
@@ -77,10 +77,24 @@ class Browser {
           await page.waitForTimeout(2000); continue;
         }
         const overview=await captureOverview(page);
+        const topSnapshot=await extractPage(page,responses,overview);
+        const topData=topSnapshot.sourceUrl?.match(/\/(?:item|i)\/(\d+)\.html/i)?.[1]===item.productId?topSnapshot:{};
         // Scroll through the product to trigger lazy-loaded description content.
         for (let n=0; n<6; n++) { await queue.checkpoint(); await page.evaluate(n=>window.scrollTo(0, n*850),n); await page.waitForTimeout(250); }
         await Promise.allSettled([...pending]);
-        const data=await extractPage(page, responses, overview);
+        const details=await captureProductDetails(page);
+        const data=await extractPage(page,responses,overview||undefined);
+        if(topData.titleSource==='dom') {data.title=topData.title;data.titleSource='dom';}
+        const unique=values=>[...new Set(values.filter(Boolean))];
+        data.descriptionUrl=data.descriptionUrl||topData.descriptionUrl;
+        if(!data.properties.length&&topData.properties?.length) data.properties=topData.properties;
+        if(!data.variations.length&&topData.variations?.length) data.variations=topData.variations;
+        data.images=unique([...(topData.images||[]),...(data.images||[])]);
+        data.descriptionImages=unique([...(topData.descriptionImages||[]),...(data.descriptionImages||[]),...(details.descriptionImages||[])]);
+        data.features=unique([...(topData.features||[]),...(data.features||[]),...(details.features||[])]);
+        const specMap=new Map();
+        for(const spec of [...(topData.specifications||[]),...(data.specifications||[]),...(details.specifications||[])]) specMap.set(JSON.stringify([spec.name,spec.value]),spec);
+        data.specifications=[...specMap.values()];
         const observedId=page.url().match(/\/(?:item|i)\/(\d+)\.html/i)?.[1];
         if(!observedId || observedId!==item.productId) {
           if(attempt===3) throw new Error('The browser is not on the requested product. No archive was created from a different page.');
@@ -102,27 +116,61 @@ class Browser {
             }
           }
         });
-        if (data.descriptionSource !== 'ai-overview' && data.descriptionUrl && !data.descriptionHtml) {
-          try {
-            const u=new URL(data.descriptionUrl);
-            if (!/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(u.hostname)) throw new Error('Description host not recognized');
-            const r=await this.context.request.get(data.descriptionUrl,{timeout:30000});
-            if (!r.ok()) throw new Error(`HTTP ${r.status()}`);
-            const body=await r.text();
-            if (/^\s*</.test(body)) data.descriptionHtml=body;
-            else data.warnings.push('Description endpoint did not return HTML; it was not evaluated as code.');
-          } catch(e) {data.warnings.push(`Description fetch failed: ${e.message}`);}
-        }
-        if (data.descriptionSource !== 'ai-overview' && !data.descriptionHtml) {
-          for (const frame of page.frames().filter(f => f!==page.mainFrame() && /desc|detail/i.test(f.url()))) {
-            try {data.descriptionHtml=await frame.locator('body').innerHTML({timeout:3000}); break;} catch {}
+        if(data.descriptionSource!=='ai-overview') {
+          const lateOverview=await captureOverview(page);
+          if(lateOverview?.text) {
+            data.descriptionText=lateOverview.text;data.descriptionHtml=lateOverview.html;data.descriptionSource='ai-overview';
+            data.features=unique([...data.features,...(lateOverview.features||[])]);
+            data.descriptionImages=unique([...data.descriptionImages,...(lateOverview.images||[])]);
           }
         }
-        if (data.descriptionSource !== 'ai-overview' && data.descriptionHtml) {
-          const clean=await parseDescription(page,data.descriptionHtml);
-          data.descriptionHtml=clean.html; data.descriptionText=clean.text; data.descriptionImages=[...new Set([...data.descriptionImages,...clean.images])];
+        // Seller content/images are independent of the preferred AI overview.
+        // Read every exposed description source; never discard seller media just
+        // because the overview beside the product price was available.
+        const fragments=unique([topData.sellerDescriptionHtml,data.sellerDescriptionHtml,details.sellerDescriptionHtml,
+          ...(data.descriptionSource==='ai-overview'?[]:[data.descriptionHtml])]);
+        if (data.descriptionUrl) {
+          try {
+            const u=new URL(data.descriptionUrl);
+            if (!/^https?:$/.test(u.protocol) || !/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(u.hostname)) throw new Error('Description host not recognized');
+            const response=await this.context.request.get(data.descriptionUrl,{timeout:30000});
+            if(!response.ok()) throw new Error(`HTTP ${response.status()}`);
+            const body=await response.text();
+            if(body.length>8*1024*1024) throw new Error('Description exceeds 8 MB');
+            if(/^\s*</.test(body)) {const clean=await parseDescription(page,body,data.descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
+            else {
+              let json;try{json=JSON.parse(body);}catch{}
+              const html=json?.data?.pcDescContent||json?.data?.description||json?.description||json?.html;
+              if(typeof html==='string') {const clean=await parseDescription(page,html,data.descriptionUrl);fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
+              else data.warnings.push('Description endpoint did not expose supported description content.');
+            }
+          } catch(e) {data.warnings.push(`Description fetch failed: ${e.message}`);}
         }
-        for (const [name,missing] of [['description',!data.descriptionHtml && !data.descriptionText],['variations',!data.variations.length],['prices',!data.prices.displayed && !data.prices.structuredOffers && !data.prices.sourceModule]]) if(missing) data.warnings.push(`${name} not exposed in the observed page.`);
+        for(const frame of page.frames().filter(f=>f!==page.mainFrame())) {
+          try {
+            const frameUrl=new URL(frame.url());
+            const allowedFrame=/^https?:$/.test(frameUrl.protocol)&&/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(frameUrl.hostname);
+            const excludedFrame=/captcha|login|signin|recommend|review/i.test(frameUrl.href);
+            let sellerFrame=allowedFrame&&!excludedFrame&&/desc|description/i.test(frameUrl.pathname);
+            if(!sellerFrame&&!excludedFrame&&(allowedFrame||frameUrl.href==='about:blank'||frameUrl.href==='about:srcdoc')) {const element=await frame.frameElement();sellerFrame=await element.evaluate(el=>!!el.closest('#product-description,.product-description,[class*="description--detail"],.detailmodule_html'));}
+            if(sellerFrame) {const clean=await parseDescription(frame,await frame.locator('body').innerHTML({timeout:3000}));fragments.push(clean.html);data.descriptionImages=unique([...data.descriptionImages,...clean.images]);}
+          } catch(e) {data.warnings.push(`Description frame unavailable: ${e.message}`);}
+        }
+        let sellerTexts=unique([topData.sellerDescriptionText,data.sellerDescriptionText,details.sellerDescriptionText]);
+        const cleaned=[];
+        for(const html of unique(fragments)) {
+          const clean=await parseDescription(page,html);cleaned.push(clean.html);
+          data.descriptionImages=unique([...data.descriptionImages,...clean.images]);
+          if(clean.text&&!/^(?:loading[. ]*|description|product description|view more)$/i.test(clean.text.trim())) sellerTexts.push(clean.text);
+        }
+        sellerTexts=unique(sellerTexts).filter((text,index,all)=>!all.some((other,i)=>i!==index&&other.length>text.length&&other.includes(text)));
+        data.sellerDescriptionHtml=cleaned.join('\n');
+        data.sellerDescriptionText=sellerTexts.join('\n\n');
+        if(data.descriptionSource!=='ai-overview') {
+          data.descriptionHtml=data.sellerDescriptionHtml||data.descriptionHtml;
+          data.descriptionText=data.sellerDescriptionText||data.descriptionText;
+        }
+        for(const [name,missing] of [['title',!data.title],['description text',!data.descriptionText?.trim()],['variation names',!data.variations.length],['visible prices',!data.variations.some(v=>v.displayedPrice)&&!data.prices.displayed]]) if(missing) data.warnings.push(`${name} not exposed or confirmed in the observed page.`);
         data.priceContext={note:'Observed account/session prices, not a guaranteed checkout total. No currency conversion or missing-value estimation.', pageLanguage:await page.locator('html').getAttribute('lang')};
         return await makeArchive(data,settings.output,this.context.request,()=>queue.checkpoint(),(bytes,mime)=>convertToJpeg(page,bytes,mime));
       }
