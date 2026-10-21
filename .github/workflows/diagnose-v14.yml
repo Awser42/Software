@@ -16,12 +16,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/${{ github.repository }}/actions/jobs/119138820608/logs > /tmp/native-job.txt
+          gh api repos/${{ github.repository }}/actions/jobs/119138820608/logs > /tmp/native-job.txt 2> /tmp/diagnostic-error.txt || true
           python3 - <<'PY'
           from pathlib import Path
-          text=Path('/tmp/native-job.txt').read_text()
+          text=Path('/tmp/native-job.txt').read_bytes().decode('utf-8',errors='replace')
           start=text.find('##[group]Run node test/packaged.e2e.js')
-          if start<0: raise SystemExit('Packaged step log was not found')
+          if start<0: text=Path('/tmp/diagnostic-error.txt').read_text()+'\n'+text; start=0
           stop=text.find('##[group]Run actions/upload-artifact',start+10)
           result=text[start:stop if stop>=0 else None][-18000:]
           target=Path('validation/diagnostics/1.4.0-packaged-failure.txt')
