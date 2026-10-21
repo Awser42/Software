@@ -36,27 +36,69 @@ jobs:
         run: npx playwright install chromium
       - name: Unit and Excel archive tests
         run: npm test
+      - name: Verify reusable source-matched Windows batch and Setup evidence
+        id: previous
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $source = '6a646d4575d61212b7c7f6daa0f459597be096d0'
+          git diff --quiet $source HEAD -- src package.json package-lock.json scripts/bundle-chromium.js scripts/build-update.js test/ui.e2e.js test/electron-harness.js test/fixtures.js test/workbook.js test/packaged.e2e.js
+          if ($LASTEXITCODE -ne 0) { 'reuse=false' >> $env:GITHUB_OUTPUT; exit 0 }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39603769467" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.head_sha -ne $source) { throw 'Source-matched run could not be verified.' }
+          $job = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/119234608178" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $job.run_id -ne 39603769467) { throw 'Source-matched Windows job could not be verified.' }
+          $required = @('Unit and Excel archive tests','Verify browser bytes and packaged runtime source','Practical desktop Excel-only test with 30-product batch','Test packaged Windows EXE visible price and Excel JPEG export','Build verified small app update without Chromium or Electron','Create Windows Setup installer with uninstall support')
+          foreach ($name in $required) {
+            if (@($job.steps | Where-Object { $_.name -eq $name -and $_.conclusion -eq 'success' }).Count -ne 1) { throw "Completed Windows evidence is missing: $name" }
+          }
+          $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39603769467/artifacts" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or @($artifacts.artifacts | Where-Object { $_.name -eq 'AliExpress-Windows-Setup-Chromium-included' -and -not $_.expired -and $_.size_in_bytes -gt 1000000 }).Count -ne 1) { throw 'Completed Setup artifact could not be verified.' }
+          'reuse=true' >> $env:GITHUB_OUTPUT
+          'Unchanged app/runtime/browser/fixture inputs retain the completed fresh 30-product batch and source-matched Setup artifact from https://github.com/Awser42/Software/actions/runs/39603769467. This run rechecks installed source/browser bytes, installed export/update behavior and actual registration/uninstall with the corrected post-exit process observation in the uninstall test.' >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/download-artifact@v4
+        if: steps.previous.outputs.reuse == 'true'
+        with:
+          name: AliExpress-Windows-Setup-Chromium-included
+          path: dist
+          github-token: ${{ github.token }}
+          run-id: 39603769467
+      - uses: actions/download-artifact@v4
+        if: steps.previous.outputs.reuse == 'true'
+        with:
+          name: practical-test-evidence
+          path: test-results
+          github-token: ${{ github.token }}
+          run-id: 39603769467
       - name: Download pinned Windows Chromium
+        if: steps.previous.outputs.reuse != 'true'
         run: npm run bundle:chromium
       - name: Package Windows app with Chromium
+        if: steps.previous.outputs.reuse != 'true'
         run: npm exec -- electron-builder --win --x64 --dir --publish never
       - name: Verify browser bytes and packaged runtime source
+        if: steps.previous.outputs.reuse != 'true'
         run: node scripts/verify-package.js
       - name: Practical desktop Excel-only test with 30-product batch
+        if: steps.previous.outputs.reuse != 'true'
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
       - name: Test packaged Windows EXE visible price and Excel JPEG export
+        if: steps.previous.outputs.reuse != 'true'
         run: node test/packaged.e2e.js
       - name: Build verified small app update without Chromium or Electron
         run: npm run build:update
       - name: Check live AliExpress product without an account
+        if: steps.previous.outputs.reuse != 'true'
         continue-on-error: true
         env:
           E2E_BUNDLED: '1'
           LIVE_PRODUCT_URL: ${{ inputs.product_url || 'https://www.aliexpress.us/item/3256812932267795.html' }}
         run: node test/live-product.e2e.js
       - name: Create Windows Setup installer with uninstall support
+        if: steps.previous.outputs.reuse != 'true'
         run: npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked --publish never
       - name: Verify actual install installed-app update and uninstall
         run: node test/installer.e2e.js
@@ -144,7 +186,7 @@ jobs:
 
           Current product price and option controls are captured before lazy description tabs can unmount them. Modern price/SKU layouts, labels without colons, enabled required selections and observed-UI fallback for unmappable catalog rows are supported. Every exported variation price still requires its own fresh visible confirmation; hidden, stale, crossed-out and unrelated amounts are not substituted.
 
-          Download and run Setup.exe. Quit an older portable copy from its tray first. The installer adds Windows shortcuts and an Installed apps entry. Remove the app through Windows Settings > Apps > Installed apps, also accessible from the app's Settings. Separate exported archives and the saved login/settings profile are preserved. Old portable EXEs remain separate files and can be deleted after quitting them.
+          Download and run Setup.exe. Quit an older portable copy from its tray first. The installer adds Windows shortcuts and an Installed apps entry. Remove the app through Windows Settings > Apps > Installed apps, or Settings > Uninstall software in the app. Separate exported archives and the saved login/settings profile are preserved. Old portable EXEs remain separate files and can be deleted after quitting them.
 
           Each product ZIP now contains only product.xlsx and Images/*.jpg; no CSV is generated. Product Details contains the observed title, URL, capture time, description, seller description, features and specifications. Variations puts each variation name next to its confirmed visible price, size, color and image filenames. Excel widths, wrapping and frozen/filterable headers are retained; long descriptions continue over readable rows. Existing archives remain available and older-format links can be recaptured.
 
@@ -152,7 +194,7 @@ jobs:
 
           Native Windows distribution verification: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Tested source: $TESTED_COMMIT
-          Fresh checks include all unit tests, the 30-product streaming batch with modern controls, unmappable catalog options and description-tab unmount cases, installed source/browser bytes, installed EXE visible-price and small-update startup, registry registration, and the actual in-app uninstall button invoking the real uninstaller with separate exports preserved. The native test appends the vendor /S option to automate its confirmation UI; the normal app opens the standard confirmation window.
+          The fresh 30-product streaming batch with modern controls and unmappable catalog options passed in source-matched run https://github.com/$GH_REPO/actions/runs/39603769467. The final retry retains that authenticated evidence only when application/runtime/browser/fixture inputs are unchanged. It freshly checks all unit tests, installed source/browser bytes, installed EXE visible-price and small-update startup, registry registration, and the actual in-app uninstall button invoking the real uninstaller with separate exports preserved. The native test appends the vendor /S option to automate its confirmation UI; the normal app opens the standard confirmation window.
 
           Login and CAPTCHA are manual. Missing values are never invented. Fixtures do not establish your live account prices; see Live-product-check.json for the separate anonymous result. The installer is unsigned.
           TEXT

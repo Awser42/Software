@@ -27,14 +27,17 @@ async function registration(){const text=await run('powershell.exe',['-NoProfile
   await fs.mkdir(exportDirectory,{recursive:true});const exportFile=path.join(exportDirectory,'keep-my-export.txt');await fs.writeFile(exportFile,'User exports must survive uninstall.');
   stage('uninstall using the installed app button and actual uninstaller');
   const buttonApp=await electron.launch({executablePath:executable,args:[`--user-data-dir=${path.join(directory,'button-profile')}`]});
+  // Playwright drops its Electron channel when the app quits. Retain the
+  // native process while connected so the acceptance check can observe exit.
+  const buttonProcess=buttonApp.process();
   try{
    const page=await buttonApp.firstWindow();await page.waitForSelector('.link-url');
    assert.equal(await page.locator('.feature-strip').isVisible(),true);
    await buttonApp.evaluate(()=>{const childProcess=process.mainModule.require('node:child_process');const original=childProcess.spawn;childProcess.spawn=(file,args,options)=>{if(!file.endsWith('Uninstall AliExpress Product Archiver.exe'))throw new Error('Unexpected uninstall target');if(JSON.stringify(args)!==JSON.stringify(['/currentuser']))throw new Error('Unexpected product uninstall arguments');return original(file,[...args,'/S'],options);};});
    await page.locator('[data-tab="settings"]').click();
    await page.locator('#manageInstallation').click();
-   await until(()=>buttonApp.process().exitCode!==null);
-  }finally{if(buttonApp.process().exitCode===null)await buttonApp.close().catch(()=>{});}
+   await until(()=>buttonProcess.exitCode!==null||buttonProcess.signalCode!==null);
+  }finally{if(buttonProcess.exitCode===null&&buttonProcess.signalCode===null)await buttonApp.close().catch(()=>{});}
   await until(async()=>!(await exists(executable))&&!(await exists(uninstaller)));await until(async()=>!(await exists(installDirectory)));installed=false;
   stage('verify unregister and preserve user exports');const remaining=await registration();assert(!remaining.some(item=>String(item.UninstallString||'').toLowerCase().includes(uninstaller.toLowerCase())));assert.equal(await fs.readFile(exportFile,'utf8'),'User exports must survive uninstall.');audit.status='passed';audit.registered=true;audit.installedAppTest=true;audit.uninstalled=true;audit.uninstallViaAppButton=true;audit.nativeWizardTestMode='The test adds /S to the observed fixed /currentuser spawn, invoking the real uninstaller without its confirmation UI.';audit.exportsPreserved=true;
   console.log('PASS: actual Windows Setup installed and registered the app, the installed EXE exported Excel/JPEG and applied a small update, and uninstall removed its files and registration while keeping separate user exports.');
