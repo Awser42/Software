@@ -1,2 +1,17 @@
-the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway
-
+##[group]Run node test/packaged.e2e.js
+2026-10-21T09:21:19.1792236Z node test/packaged.e2e.js
+2026-10-21T09:21:19.1868143Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T09:21:19.1868635Z env:
+2026-10-21T09:21:19.1868887Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
+2026-10-21T09:21:19.1869210Z ##[endgroup]
+2026-10-21T09:22:13.5604187Z electronApplication.evaluate: TimeoutError: page.goto: Timeout 30000ms exceeded.
+2026-10-21T09:22:13.5605012Z Call log:
+2026-10-21T09:22:13.5606758Z   - navigating to "https://www.aliexpress.com/item/991234567890.html", waiting until "load"
+2026-10-21T09:22:13.5607437Z 
+2026-10-21T09:22:13.5607730Z     at eval (eval at evaluate (:370:30), <anonymous>:36:16)
+2026-10-21T09:22:13.5608348Z     at async <anonymous>:396:30
+2026-10-21T09:22:13.5608935Z     at D:\a\Software\Software\test\packaged.e2e.js:50:26 {
+2026-10-21T09:22:13.5609476Z   log: []
+2026-10-21T09:22:13.5609801Z }
+2026-10-21T09:22:13.6723157Z ##[error]Process completed with exit code 1.
+2026-10-21T09:22:13.6949735Z 
