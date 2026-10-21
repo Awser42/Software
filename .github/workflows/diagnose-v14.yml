@@ -16,7 +16,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api --allow-escape-sequences repos/${{ github.repository }}/actions/jobs/119148115989/logs > /tmp/native-job.txt 2> /tmp/diagnostic-error.txt || true
+          gh api --allow-escape-sequences repos/${{ github.repository }}/actions/jobs/119157870817/logs > /tmp/native-job.txt 2> /tmp/diagnostic-error.txt || true
           python3 - <<'PY'
           from pathlib import Path
           import re
