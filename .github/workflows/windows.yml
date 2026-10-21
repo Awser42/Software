@@ -35,7 +35,7 @@ jobs:
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
-      - name: Launch packaged Windows EXE and bundled Chromium
+      - name: Test packaged Windows EXE CSV and JPEG export
         run: node test/packaged.e2e.js
       - name: Create single-file EXE with Chromium included
         run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked
@@ -49,3 +49,59 @@ jobs:
           name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
           compression-level: 0
           path: dist/*win-x64.exe
+  publish-download:
+    needs: test-and-package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TESTED_COMMIT: ${{ github.sha }}
+      TESTED_RUN: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read package version
+        shell: bash
+        run: echo "APP_VERSION=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
+          path: download
+      - name: Prepare public EXE, ZIP and checksums from tested artifact
+        shell: bash
+        run: |
+          test -s "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe"
+          cat > download/READ-ME.txt <<TEXT
+          AliExpress Product Archiver $APP_VERSION - Windows 10/11 x64
+          Extract this ZIP and run AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe.
+          Chromium is included. No Node.js or separate browser download is needed.
+          Open Chromium / Login, sign into AliExpress, choose a folder, paste URLs and Run.
+          Each product ZIP contains only product.csv (Title, Description, Variation, Price)
+          and an Images folder of real JPEG files. Missing values stay blank.
+          Description prefers the observed AliExpress AI overview, then seller text.
+          Login and CAPTCHA are manual. Live account prices require your login.
+          The portable EXE is unsigned. Native Windows fixture tests passed for this build.
+          TEXT
+          cd download
+          zip -0 "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" READ-ME.txt
+          unzip -t "AliExpress-Product-Archiver-$APP_VERSION-Download.zip"
+          sha256sum "AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" > SHA256SUMS.txt
+      - name: Publish only after all Windows practical tests pass
+        shell: bash
+        run: |
+          cat > release-notes.md <<TEXT
+          Windows 10/11 x64 portable app with Chromium included.
+
+          Each product ZIP now contains only product.csv with Title, Description, Variation and Price, plus Images/*.jpg. WebP/PNG sources are actually converted to JPEG. Variation filenames retain observed option names. Description prefers the visible AliExpress AI overview and falls back to seller text. Missing SKU prices remain blank. Earlier archives can be exported again in this format.
+
+          Download the EXE directly, or download and extract the Download.zip.
+
+          This exact artifact passed native Windows tests, including the ten-product desktop batch, actual JPEG decoding and the packaged EXE archive workflow: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          Tested source: $TESTED_COMMIT
+
+          Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. The EXE is unsigned.
+          TEXT
+          gh release create "v$APP_VERSION" "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "download/AliExpress-Product-Archiver-$APP_VERSION-Download.zip" download/SHA256SUMS.txt --target "$TESTED_COMMIT" --title "Windows app $APP_VERSION - CSV and JPEG, Chromium included" --notes-file release-notes.md

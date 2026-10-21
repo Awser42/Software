@@ -3,6 +3,9 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
+const yauzl=require('yauzl');
+function zipContents(file){return new Promise((resolve,reject)=>{yauzl.open(file,{lazyEntries:true},(error,zip)=>{if(error)return reject(error);const entries={};zip.on('error',reject);zip.on('end',()=>resolve(entries));zip.on('entry',entry=>{if(entry.fileName.endsWith('/')){zip.readEntry();return;}zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const chunks=[];stream.on('data',c=>chunks.push(c));stream.on('error',reject);stream.on('end',()=>{entries[entry.fileName]=Buffer.concat(chunks);zip.readEntry();});});});zip.readEntry();});});}
+async function verifyExport(file,instance){const contents=await zipContents(file);const names=Object.keys(contents);assert.equal(names.length,4);assert(names.includes('product.csv'));const text=contents['product.csv'].toString('utf8');assert(text.startsWith('\uFEFF"Title","Description","Variation","Price"'));assert(text.includes('Fixture Cotton Shirt'));assert(text.includes('Observed fixture AI overview description'));assert(text.includes('Expanded fixture bullet captured before scrolling.'));assert(!text.includes('Lower seller detail'));assert(text.includes('Color: Blue'));assert(text.includes('USD'));assert(text.includes('12.34'));for(const name of names.filter(n=>n!=='product.csv')){assert(/^Images\/.+\.jpg$/.test(name));assert.equal(contents[name].readUInt16BE(0),0xffd8);const decoded=await instance.evaluate(({nativeImage},base64)=>{const image=nativeImage.createFromBuffer(Buffer.from(base64,'base64'));return {empty:image.isEmpty(),...image.getSize()};},contents[name].toString('base64'));assert.deepEqual(decoded,{empty:false,width:20,height:12});}}
 async function until(fn,timeout=20000){const start=Date.now();while(Date.now()-start<timeout){if(await fn())return;await new Promise(r=>setTimeout(r,100));}throw new Error('Timed out waiting for expected state');}
 (async()=>{
  const data=await fs.mkdtemp(path.join(os.tmpdir(),'archiver-ui-'));
@@ -24,7 +27,7 @@ async function until(fn,timeout=20000){const start=Date.now();while(Date.now()-s
   await page.locator('#continue').click();await page.locator('#resume').click();
   await until(()=>page.locator('#statDone').textContent().then(t=>t==='1'));
   await until(()=>page.locator('#summary').textContent().then(t=>t.startsWith('Idle')));
-  const zips=(await fs.readdir(out)).filter(n=>n.endsWith('.zip'));assert.equal(zips.length,1);
+  const zips=(await fs.readdir(out)).filter(n=>n.endsWith('.zip'));assert.equal(zips.length,1);await verifyExport(path.join(out,zips[0]),instance);
   await page.locator('[data-tab="downloads"]').click();assert.equal(await page.locator('.download-card').count(),1);assert.equal(await page.locator('.preview img').count(),1);
   await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/downloads.png',fullPage:true});
   await page.locator('[data-tab="bulk"]').click();await page.locator('#urls').fill('https://www.aliexpress.com/item/1.html');await page.locator('#run').click();assert((await page.locator('#notice').textContent()).includes('1 duplicates'));
@@ -53,7 +56,8 @@ async function until(fn,timeout=20000){const start=Date.now();while(Date.now()-s
   assert.equal(complete.items.filter(i=>i.status==='done').length,11);
   assert.equal((await fs.readdir(out)).filter(n=>n.endsWith('.zip')).length,11);
   assert.equal(new Set(complete.downloads.map(d=>d.productId)).size,11);
-  console.log('PASS: ten-product bulk batch saves each ZIP and publishes it while remaining products continue in one Chromium session.');
+  for(const download of complete.downloads){assert.equal(download.exportFormat,'csv-jpeg-v1');await verifyExport(download.path,instance);}
+  console.log('PASS: ten-product bulk batch publishes each ZIP while remaining products continue in one Chromium session; every ZIP contains only a four-column CSV and decoded original-size JPEGs converted from WebP by the production codec.');
   console.log('PASS: Electron tabs, settings, folder picker IPC, bulk input, invalid URL, duplicate skipping, real Chromium manual gate, pause/resume, extraction, ZIP, preview, navigation failure, retry, persistence.');
  } catch(e) {
   const page=await instance.firstWindow();console.error('UI diagnostic:',await page.locator('body').innerText());throw e;

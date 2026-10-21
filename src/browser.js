@@ -1,7 +1,8 @@
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const {spawn} = require('node:child_process');
-const {extractPage, parseDescription} = require('./extract');
+const {extractPage, parseDescription, captureOverview} = require('./extract');
+const {convertToJpeg} = require('./jpeg');
 const {makeArchive} = require('./archive');
 const {bundledChromium}=require('./browser-path');
 
@@ -74,10 +75,11 @@ class Browser {
           await queue.manual('Complete login or CAPTCHA in Chromium. Open the product page there, then click Continue after login.');
           await page.waitForTimeout(2000); continue;
         }
+        const overview=await captureOverview(page);
         // Scroll through the product to trigger lazy-loaded description content.
         for (let n=0; n<6; n++) { await queue.checkpoint(); await page.evaluate(n=>window.scrollTo(0, n*850),n); await page.waitForTimeout(250); }
         await Promise.allSettled([...pending]);
-        const data=await extractPage(page, responses);
+        const data=await extractPage(page, responses, overview);
         const observedId=page.url().match(/\/(?:item|i)\/(\d+)\.html/i)?.[1];
         if(!observedId || observedId!==item.productId) {
           if(attempt===3) throw new Error('The browser is not on the requested product. No archive was created from a different page.');
@@ -88,7 +90,7 @@ class Browser {
           await queue.manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
         }
         data.productId=item.productId;
-        if (data.descriptionUrl && !data.descriptionHtml) {
+        if (data.descriptionSource !== 'ai-overview' && data.descriptionUrl && !data.descriptionHtml) {
           try {
             const u=new URL(data.descriptionUrl);
             if (!/(^|\.)(aliexpress\.(com|us)|alicdn\.com|aliexpress-media\.com)$/i.test(u.hostname)) throw new Error('Description host not recognized');
@@ -99,18 +101,18 @@ class Browser {
             else data.warnings.push('Description endpoint did not return HTML; it was not evaluated as code.');
           } catch(e) {data.warnings.push(`Description fetch failed: ${e.message}`);}
         }
-        if (!data.descriptionHtml) {
+        if (data.descriptionSource !== 'ai-overview' && !data.descriptionHtml) {
           for (const frame of page.frames().filter(f => f!==page.mainFrame() && /desc|detail/i.test(f.url()))) {
             try {data.descriptionHtml=await frame.locator('body').innerHTML({timeout:3000}); break;} catch {}
           }
         }
-        if (data.descriptionHtml) {
+        if (data.descriptionSource !== 'ai-overview' && data.descriptionHtml) {
           const clean=await parseDescription(page,data.descriptionHtml);
           data.descriptionHtml=clean.html; data.descriptionText=clean.text; data.descriptionImages=[...new Set([...data.descriptionImages,...clean.images])];
         }
-        for (const [name,missing] of [['description',!data.descriptionHtml && !data.descriptionText],['variations',!data.variations.length],['specifications',!data.specifications.length],['prices',!data.prices.displayed && !data.prices.structuredOffers && !data.prices.sourceModule]]) if(missing) data.warnings.push(`${name} not exposed in the observed page.`);
+        for (const [name,missing] of [['description',!data.descriptionHtml && !data.descriptionText],['variations',!data.variations.length],['prices',!data.prices.displayed && !data.prices.structuredOffers && !data.prices.sourceModule]]) if(missing) data.warnings.push(`${name} not exposed in the observed page.`);
         data.priceContext={note:'Observed account/session prices, not a guaranteed checkout total. No currency conversion or missing-value estimation.', pageLanguage:await page.locator('html').getAttribute('lang')};
-        return await makeArchive(data,settings.output,this.context.request,()=>queue.checkpoint());
+        return await makeArchive(data,settings.output,this.context.request,()=>queue.checkpoint(),(bytes,mime)=>convertToJpeg(page,bytes,mime));
       }
       throw new Error('Login or verification is still blocking the page. Complete it and retry this link.');
     } finally {page.off('response',handler);}

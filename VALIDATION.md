@@ -1,31 +1,41 @@
-# Validation report — bulk queue and bundled Chromium
+# Validation report — CSV and JPEG export
 
-## Passed in this cloud machine
+## Version 1.2.0 checks
 
-- `npm test`: **10 passed, 0 failed, 0 skipped**. Includes Chromium bundle resolution/version checks, path protection, extraction, exact fixture prices, original image URLs, options, specifications, HTML safety, complete ZIP contents, asset errors, CSV safety, URL validation, duplicates, pause/resume, manual verification and retry.
-- `bash scripts/test-ui-linux.sh`: real Electron desktop UI and production Chromium launcher/extraction/ZIP path with controlled external product fixtures. Tested settings, folder picker IPC, login/CAPTCHA continuation, pause/resume, failed navigation and retry, previews, history, and a **10-product batch**. Confirmed the first new ZIP exists and is exposed in the UI while later products are still pending; all ten separate ZIPs eventually complete in the same browser session.
-- Downloaded matching **Windows Chromium 156.0.8078.4 (revision 1248)** through Playwright's official HTTPS download flow. No TLS or verification bypass was used.
-- `node scripts/verify-package.js`: Windows package runtime files match current source, bundled Windows Chromium exists, and its SHA-256 matches the download manifest.
-- Windows x64 ZIP and portable EXE build include Chromium as application resources. Release builds are unsigned.
+The export contract for this version is one product ZIP containing only `product.csv` and `Images/*.jpg`. CSV columns are exactly `Title`, `Description`, `Variation`, `Price`. The observed AliExpress AI overview is preferred, with seller description as the fallback. Missing data stays blank.
 
-Screenshots from the desktop test are in `test-results/`, including `bulk-in-progress.png` showing delivery during an active batch. These are fixture products, not captured live AliExpress products.
+Validation for this revision must confirm:
 
-## GitHub practical test
+- Extraction preserves observed titles, descriptions, variation names, currencies and prices without filling missing SKU prices or inventing combinations.
+- An expanded, substantive AI overview takes priority; hidden or unrelated content does not replace the seller fallback.
+- ZIP contents match the four-column CSV and single JPEG image folder contract.
+- WebP/PNG sources become decodable JPEG files with correct dimensions and image content, including a WebP payload served behind a `.jpg` URL.
+- Pause/resume, manual verification, retry, duplicate skipping, legacy-export recapture, persisted history and image warnings still work.
+- A ten-product desktop batch exposes each finished ZIP while remaining links continue in the same Chromium session.
+- The Windows package includes matching Chromium, packaged runtime files match source, and the actual Windows EXE opens its bundled browser.
 
-The Windows Actions workflow runs on pushes to `main`, pull requests, and manual dispatch. It runs unit/archive tests; builds the Windows app with Chromium; verifies packaged files; exercises the ten-product desktop fixture with the **shipped Windows Chromium**; then launches the **actual packaged Windows EXE** and verifies that its bundled browser opens without installation. Screenshots and releases are uploaded as Actions artifacts.
+Results for the current revision are recorded below only after the corresponding commands and GitHub run finish. The checklist alone is not evidence of a passed test.
 
-GitHub execution status is reported separately in the delivery message. A workflow file or successful local run does not establish a successful GitHub run.
+## Recorded results
 
-## Remaining limits
+Local version 1.2.0 checks passed on 2026-10-21:
 
-This machine is Linux, so native Windows execution is delegated to the GitHub Windows workflow and must be confirmed from its actual run result. Local tests do not establish native Windows success.
+- `npm test`: 19 tests passed, zero failures or skips. This includes actual PNG/WebP conversion, misleading image MIME, decoded JPEG dimensions and white transparency, AI overview expansion/priority/fallback, missing and numeric-zero prices, four-column CSV output and legacy duplicate migration.
+- `bash scripts/test-ui-linux.sh`: passed with the real Electron UI and production Chromium/queue/archive path. Manual verification, pause/resume, failed navigation and retry, duplicate skipping, persistence and ten-product streaming delivery passed. All 11 exported ZIPs contained only the CSV and three decodable JPEG images; expanded overview text remained preferred over seller text.
+- JavaScript syntax and `git diff --check` passed.
 
-No AliExpress account was logged in here. Login and CAPTCHA completion remain manual in the visible Chromium window. Fixture prices verify extraction behavior, not a live account-specific cost. Product price, currency, region, coupons, taxes and shipping may affect the final amount; missing fields are never estimated.
+The native Windows packaged-EXE test and public version 1.2.0 release are pending. The workflow tests the actual packaged code and bundled Chromium, including a CSV/JPEG export from mislabeled WebP bytes, before publication. No native Windows success is claimed until that run completes.
+
+The earlier version 1.1.0 Windows workflow passed at [run 39548331257](https://github.com/Awser42/Software/actions/runs/39548331257), source commit `795422b373ef5c4fff263f8d618ce5bc1d769f1d`. That run covered the prior export format and does not validate the new CSV/JPEG changes.
+
+## Live-account limits
+
+Controlled fixtures verify extraction and export behavior. They do not establish a live account-specific AliExpress price or guarantee compatibility with every live product. No real account login or CAPTCHA completion is claimed by fixture tests. Login takes place manually in the visible Chromium window.
+
+Price, currency, region, coupons, taxes and shipping can affect the final checkout amount. Missing values are never estimated. Native Windows behavior must be supported by an actual Windows run; a Linux test alone does not establish it.
 
 ## Windows user check
 
-Run the single-file EXE, or extract the entire ZIP and run its app EXE. Click Open Chromium / Login; the included browser should open without a separate download. Sign in, set currency/delivery region, paste 8–10 real product links and Run. Each completed product appears immediately in Latest saved product and Downloads while remaining links continue. Inspect prices, image folders, description HTML, CSV files, complete JSON, and warnings in the saved ZIPs.
+Run the portable EXE, click Open Chromium / Login, and sign in. Set your country/currency, paste 8–10 full product links and Run. Each completed product should appear in Latest saved product and Downloads while later links continue.
 
-## Compact 1.1 release
-
-The preceding full Windows workflow passed at https://github.com/Awser42/Software/actions/runs/39547465770 (commit ee121fe), including the ten-product streaming batch, native packaged EXE and included Chromium. Version 1.1 keeps Chromium bundled, enables maximum compression, ships English browser/desktop interface packs, and preserves the original Chromium download intact. A fresh Windows workflow validates the compact release; its actual result is linked in the delivery report.
+Inspect each ZIP: it should contain only `product.csv` and the `Images/` folder. Open the CSV and compare Title, Description, Variation and Price with the logged-in page. Where available, Description should contain the observed AI overview and its disclaimer; otherwise it should contain the lower seller description. Confirm the images open as JPEGs and variation filenames are readable. Review warnings in the app for unavailable fields or images.
