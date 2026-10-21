@@ -1,0 +1,20 @@
+##[group]Run npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked
+2026-10-21T11:00:27.5261852Z npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked
+2026-10-21T11:00:27.5318800Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-10-21T11:00:27.5319124Z env:
+2026-10-21T11:00:27.5319338Z   ELECTRON_BUILDER_COMPRESSION_LEVEL: 9
+2026-10-21T11:00:27.5319596Z ##[endgroup]
+2026-10-21T11:00:28.8265966Z   • electron-builder  version=26.15.3 os=10.0.26100
+2026-10-21T11:00:28.8269430Z   • Implicit publishing triggered by CI detection. This behavior will be disabled in electron-builder v27. Please use --publish explicitly.
+2026-10-21T11:00:28.8301501Z   • loaded configuration  file=package.json ("build" field)
+2026-10-21T11:00:29.5236320Z   • building        target=nsis file=dist\AliExpress-Product-Archiver-1.4.1-Setup.exe archs=x64 oneClick=false perMachine=false
+2026-10-21T11:00:29.5270304Z   • default Electron icon is used  reason=application icon is not set
+2026-10-21T11:00:29.7066498Z   • downloaded      label=nsis-3.0.4.1.7z progress=100%
+2026-10-21T11:00:29.9530067Z   • downloaded      label=7zip-win-x64.tar.gz progress=100%
+2026-10-21T11:01:34.9912376Z   • downloaded      label=nsis-resources-3.4.1.7z progress=100%
+2026-10-21T11:01:36.3076094Z   • signing with signtool.exe  path=dist\AliExpress-Product-Archiver-1.4.1-Setup.__uninstaller.exe
+2026-10-21T11:01:38.6643856Z   • signing with signtool.exe  path=dist\AliExpress-Product-Archiver-1.4.1-Setup.exe
+2026-10-21T11:01:38.6646310Z   • building block map  blockMapFile=dist\AliExpress-Product-Archiver-1.4.1-Setup.exe.blockmap
+2026-10-21T11:01:46.7484981Z   ⨯ GitHub Personal Access Token is not set, neither programmatically, nor using env "GH_TOKEN"
+2026-10-21T11:01:46.7987862Z ##[error]Process completed with exit code 1.
+2026-10-21T11:01:46.8156314Z 
