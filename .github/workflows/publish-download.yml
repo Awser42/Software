@@ -1,0 +1,59 @@
+name: Publish tested Windows download
+on:
+  push:
+    branches: ['download/v1.1.0']
+    paths: ['.github/workflows/publish-download.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TESTED_COMMIT: 795422b373ef5c4fff263f8d618ce5bc1d769f1d
+    steps:
+      - name: Verify successful test run and exact artifact identity
+        shell: bash
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/39548331257" | jq -e --arg sha "$TESTED_COMMIT" '.conclusion == "success" and .head_sha == $sha'
+          gh api "repos/$GH_REPO/actions/artifacts/12322303072" | jq -e '.expired == false and .workflow_run.id == 39548331257 and .digest == "sha256:32f9956b5f080760918ff912dab8bf8f89e2990e1ea93634e6ba98848a97cf59"'
+      - uses: actions/download-artifact@v4
+        with:
+          name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
+          run-id: 39548331257
+          github-token: ${{ github.token }}
+          path: download
+      - name: Prepare EXE, ZIP and checksums
+        shell: bash
+        run: |
+          test -s download/AliExpress-Product-Archiver-1.1.0-win-x64.exe
+          cat > download/READ-ME.txt <<'TEXT'
+          AliExpress Product Archiver 1.1.0 — Windows 10/11 x64
+          Extract this ZIP, then run AliExpress-Product-Archiver-1.1.0-win-x64.exe.
+          Chromium is included. No Node.js or separate browser download is needed.
+          Click Open Chromium / Login, sign into AliExpress, paste product URLs, and Run.
+          Each product ZIP becomes available while the remaining queue continues.
+          Login and CAPTCHA are completed manually. Missing product data is never invented.
+          The EXE is unsigned. Account-specific live prices require your login.
+          This build passed native Windows tests, including the ten-product fixture batch.
+          TEXT
+          cd download
+          zip -0 AliExpress-Product-Archiver-1.1.0-Download.zip AliExpress-Product-Archiver-1.1.0-win-x64.exe READ-ME.txt
+          unzip -t AliExpress-Product-Archiver-1.1.0-Download.zip
+          sha256sum AliExpress-Product-Archiver-1.1.0-win-x64.exe AliExpress-Product-Archiver-1.1.0-Download.zip > SHA256SUMS.txt
+      - name: Publish verified build as a normal downloadable release
+        shell: bash
+        run: |
+          cat > release-notes.md <<'TEXT'
+          Windows 10/11 x64 portable app with Chromium included.
+
+          Download the EXE directly, or download and extract the ZIP if your browser blocks EXE downloads.
+
+          Sign into AliExpress through Open Chromium / Login, paste multiple product URLs, and Run. Each completed product is saved in a separate ZIP while the queue continues.
+
+          This is the exact artifact from successful Windows practical test run https://github.com/Awser42/Software/actions/runs/39548331257, for commit 795422b373ef5c4fff263f8d618ce5bc1d769f1d. Native Windows app launch, included Chromium and a ten-product fixture workflow passed. Live account-specific prices require your manual login. The EXE is unsigned.
+          TEXT
+          gh release create v1.1.0 download/AliExpress-Product-Archiver-1.1.0-win-x64.exe download/AliExpress-Product-Archiver-1.1.0-Download.zip download/SHA256SUMS.txt --target "$TESTED_COMMIT" --title "Windows app 1.1.0 — Chromium included" --notes-file release-notes.md
