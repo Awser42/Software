@@ -14,5 +14,9 @@ function loadCode(directory,appPath,entry='src/main.js') {
   const main=path.join(directory,...entry.split('/'));if(!approved.has(main))throw new Error('Update entry is not approved.');return load(main);
 }
 async function boot(){const {app,dialog}=require('electron');if(!app.requestSingleInstanceLock()){app.quit();return;}const appPath=app.getAppPath();const startup=await selectStartup({appPath,userData:app.getPath('userData'),runtimeVersion:process.versions.electron});globalThis[RUNTIME_KEY]={...startup,appPath};if(!startup.directory){require('./main');return;}try{loadCode(startup.directory,appPath,startup.manifest.entry);}catch(error){await rollbackPointer(startup.paths,startup.pointer,`The downloaded app code could not start: ${error.message}`);dialog.showErrorBox('App update restored','The small update could not start. The previous app code will reopen; your archives and login have been kept.');app.relaunch({exePath:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});app.exit(0);}}
-if(require.main===module)boot().catch(error=>{const {app,dialog}=require('electron');dialog.showErrorBox('Product Archiver could not start',String(error.message||error));app.exit(1);});
+// Electron's default-app launcher can keep its own module as require.main when
+// starting an unpackaged project. Identify that entry through Electron's app
+// path too; ordinary Node imports of loadCode must remain side-effect free.
+const runningAsApp=require.main===module||Boolean(process.versions.electron&&!process.env.ELECTRON_RUN_AS_NODE&&path.resolve(require('electron').app.getAppPath())===path.resolve(__dirname,'..'));
+if(runningAsApp)boot().catch(error=>{const {app,dialog}=require('electron');dialog.showErrorBox('Product Archiver could not start',String(error.message||error));app.exit(1);});
 module.exports={boot,loadCode};
