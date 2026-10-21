@@ -21,14 +21,15 @@ function targetsFor(variant,properties) {
   }
   return targets.length?targets:null;
 }
+function selectedTarget(state,target) {
+  const group=findGroup(state,target); if (!group) return false;
+  const selected=group.values.filter(v=>v.selected&&!v.disabled);
+  return selected.length===1&&sameValue(selected[0],target);
+}
 function matches(state,targets,skuId) {
   if (skuId && state.selectedSkuId) return String(state.selectedSkuId)===String(skuId);
   if (!targets?.length || targets.length!==state.groups.length) return false;
-  return targets.every(target=>{
-    const group=findGroup(state,target); if (!group) return false;
-    const selected=group.values.filter(v=>v.selected&&!v.disabled);
-    return selected.length===1&&sameValue(selected[0],target);
-  });
+  return targets.every(target=>selectedTarget(state,target));
 }
 // A range is a product-level observation, not a price for one selected SKU.
 const singlePrice=value=>typeof value==='string' && /\d/.test(value) && !/\d\s*(?:-|–|—|~|to)\s*(?:[A-Z]{2,3}\s*)?[$€£¥₹]?\s*\d/i.test(value);
@@ -39,7 +40,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
   const checkPage=state=>{
     if (product.productId && state.productId!==String(product.productId)) throw new Error('Product changed while reading visible variation prices. No price was assigned from a different page.');
   };
-  const waitStable=async(targets=null,skuId=null,freshAfter=null)=>{
+  const waitStable=async(targets=null,skuId=null,freshAfter=null,onlyTarget=null)=>{
     await queue.checkpoint(); await onGate();
     // Give AliExpress time to update the current-price panel after selection.
     await page.waitForTimeout(Math.max(0,settleMs));
@@ -49,7 +50,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
       await queue.checkpoint(); await onGate();
       deadline+=Date.now()-pausedAt;
       const state=await readPriceState(page); checkPage(state);
-      const selectionOK=!targets&&!skuId || matches(state,targets,skuId);
+      const selectionOK=onlyTarget?selectedTarget(state,onlyTarget):(!targets&&!skuId || matches(state,targets,skuId));
       const fresh=!freshAfter || state.revision>0 || state.displayed!==freshAfter.displayed;
       if (selectionOK && fresh && state.displayed && !state.loading) {
         const key=JSON.stringify([state.displayed,state.groups.map(g=>g.values.filter(v=>v.selected).map(v=>[g.id,g.name,v.id,v.name]))]);
@@ -88,7 +89,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
     product.prices.displayedUnassigned=false;
   }
   try {
-    for (let index=0;index<plans.length;index++) {
+    variantsLoop: for (let index=0;index<plans.length;index++) {
       const {variant,targets}=plans[index];
       await queue.checkpoint(); await onGate();
       onProgress(`Reading visible variation price ${index+1} of ${plans.length}`);
@@ -96,15 +97,24 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
       if (!targets?.length || targets.length!==initial.groups.length) continue;
       const before=await readPriceState(page); checkPage(before);
       if (!before.selectedSkuId && plans.filter(p=>JSON.stringify(p.targets)===JSON.stringify(targets)).length>1) continue;
-      await beginPriceObservation(page);
-      let selected=true;
+      let selected=true,observed=null;
       for (const target of targets) {
-        await queue.checkpoint();
+        await queue.checkpoint(); await onGate();
+        const beforeGroup=await readPriceState(page); checkPage(beforeGroup);
+        if (selectedTarget(beforeGroup,target)) continue;
+        // Settle each changed group separately. A price update for an
+        // intermediate Color/Size combination must not confirm the final SKU.
+        await beginPriceObservation(page);
         if (!await selectObservedValue(page,target)) { selected=false; break; }
+        observed=await waitStable(null,null,beforeGroup,target);
+        if (!observed) {
+          product.warnings.push('A variation price update could not be confirmed. Remaining price selections were stopped to avoid attributing a late update to another variation.');
+          break variantsLoop;
+        }
       }
       if (!selected) continue;
-      const observed=await waitStable(targets,variant.skuId,before);
-      if (observed && singlePrice(observed.displayed)) variant.displayedPrice=observed.displayed;
+      observed=observed || await waitStable(targets,variant.skuId);
+      if (observed && matches(observed,targets,variant.skuId) && singlePrice(observed.displayed)) variant.displayedPrice=observed.displayed;
     }
   } finally {
     await endPriceObservation(page).catch(()=>{});
