@@ -1,3 +1,4 @@
+const {workbookTable,archiveTable}=require('./workbook');
 // Optional public-site check. This profile contains no supplied user account.
 const fs=require('node:fs/promises');
 const path=require('node:path');
@@ -6,8 +7,6 @@ const yauzl=require('yauzl');
 const {Browser}=require('../src/browser');
 const {extractPage}=require('../src/extract');
 const {normalizedUrl,productKey}=require('../src/archive');
-function csvRows(bytes){const text=bytes.toString('utf8').replace(/^\uFEFF/,'');const rows=[];let row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(cell);cell='';}else if(c==='\r'&&text[i+1]==='\n'&&!quoted){row.push(cell);rows.push(row);row=[];cell='';i++;}else cell+=c;}row.push(cell);rows.push(row);return rows;}
-function csvFromZip(file){return new Promise((resolve,reject)=>{yauzl.open(file,{lazyEntries:true},(error,zip)=>{if(error)return reject(error);zip.on('error',reject);zip.on('end',()=>reject(new Error('Public export contained no product.csv')));zip.on('entry',entry=>{if(entry.fileName!=='product.csv'){zip.readEntry();return;}zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const chunks=[];stream.on('data',chunk=>chunks.push(chunk));stream.on('error',reject);stream.on('end',()=>{zip.close();resolve(Buffer.concat(chunks));});});});zip.readEntry();});});}
 async function bounded(promise,milliseconds){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(new Error('Public validation exceeded its time limit.'),{code:'LIVE_TIMEOUT'})),milliseconds);})]);}finally{clearTimeout(timer);}}
 (async()=>{
  const input=process.env.LIVE_PRODUCT_URL;if(!input)throw new Error('LIVE_PRODUCT_URL is required for the optional public-site check.');const url=normalizedUrl(input);const id=productKey(url);
@@ -17,7 +16,7 @@ async function bounded(promise,milliseconds){let timer;try{return await Promise.
  try{
   const queue={checkpoint:async()=>{if(Date.now()>deadline)throw Object.assign(new Error('Public validation exceeded 60 seconds.'),{code:'LIVE_TIMEOUT'});},manual:async message=>{throw Object.assign(new Error(message),{code:'LIVE_MANUAL'});}};
   extraction=browser.extract({productId:id,url},{output:path.join(directory,'output'),settleMs:1000,delayMs:0},queue);
-  const result=await bounded(extraction,60000);const table=csvRows(await csvFromZip(result.path));const headers=table.shift();const rows=table.map(row=>Object.fromEntries(headers.map((name,index)=>[name,row[index]||''])));const first=rows[0]||{};
+  const result=await bounded(extraction,60000);const table=await archiveTable(result.path);const headers=table.shift();const rows=table.map(row=>Object.fromEntries(headers.map((name,index)=>[name,row[index]||''])));const first=rows[0]||{};
   record.title=first.Title||null;record.descriptionCharacters=(first.Description||'').length;record.sellerDescriptionCharacters=(first['Seller Description']||'').length;record.featuresCount=(first.Features||'').split('\n').filter(Boolean).length;record.specificationsCount=(first.Specifications||'').split('\n').filter(Boolean).length;record.variationRows=rows.filter(row=>row.Variation).length;record.pricedVariationRows=rows.filter(row=>row.Variation&&row.Price).length;record.imageCount=result.images;record.pricesSample=[...new Set(rows.map(row=>row.Price).filter(Boolean))].slice(0,5);record.status=record.title?'parsed':'extraction-error';if(!record.title){record.reason='A public product export was created without a title.';process.exitCode=1;}
  }catch(error){
   let gate=false;try{if(browser.page&&!browser.page.isClosed())gate=await bounded(browser.inspectGate(browser.page),3000);}catch{}

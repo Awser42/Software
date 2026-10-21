@@ -8,8 +8,6 @@ const {writeSpreadsheet} = require('./spreadsheet');
 const {readArchivePreview} = require('./archive-preview');
 
 const safeName = v => String(v || 'product').normalize('NFKC').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 110) || 'product';
-const csvCell = v => { let s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v); if (/^[=+@\-\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
-const csv = (rows, columns) => '\uFEFF' + [columns, ...rows.map(row => columns.map(k => row[k]))].map(r => r.map(csvCell).join(',')).join('\r\n');
 function productKey(url) {
   const u = new URL(url);
   if (!/^https?:$/.test(u.protocol) || u.username || u.password) throw new Error('Use an HTTPS AliExpress product URL.');
@@ -52,7 +50,7 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-csv-xlsx-jpeg-v3';
+const EXPORT_FORMAT='product-xlsx-jpeg-v4';
 const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
 function variantOptions(product,variant) {
@@ -167,7 +165,6 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       if (!product.warnings.includes(warning)) product.warnings.push(warning);
     }
     const rows=productRows(product);
-    await fsp.writeFile(path.join(stage,'product.csv'),csv(rows,COLUMNS));
     await writeSpreadsheet(path.join(stage,'product.xlsx'),product,rows);
     await new Promise((resolve,reject) => {
       const dest = fs.createWriteStream(tempZip,{flags:'wx'}); const zip = archiver('zip',{zlib:{level:6}});
@@ -184,4 +181,4 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
     await fsp.rm(stage,{recursive:true,force:true}); await fsp.rm(tempZip,{force:true});
   }
 }
-module.exports = {makeArchive, productKey, normalizedUrl, safeName, csv, COLUMNS, EXPORT_FORMAT, readArchivePreview};
+module.exports = {makeArchive, productKey, normalizedUrl, safeName, COLUMNS, EXPORT_FORMAT, readArchivePreview};

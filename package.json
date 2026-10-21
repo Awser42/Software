@@ -1,6 +1,6 @@
 {
   "name": "aliexpress-product-archiver",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Desktop product archive tool with manual Chromium sign-in",
   "main": "src/bootstrap.js",
   "private": true,
@@ -12,7 +12,7 @@
     "browser:install": "playwright install chromium",
     "bundle:chromium": "node scripts/bundle-chromium.js",
     "build:update": "node scripts/build-update.js",
-    "build:win": "npm run bundle:chromium && electron-builder --win zip --x64",
+    "build:win": "npm run bundle:chromium && electron-builder --win nsis --x64",
     "build:linux": "electron-builder --linux dir"
   },
   "dependencies": {
@@ -59,6 +59,16 @@
     "electronLanguages": [
       "en-US"
     ],
-    "compression": "maximum"
+    "compression": "maximum",
+    "nsis": {
+      "artifactName": "AliExpress-Product-Archiver-${version}-Setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

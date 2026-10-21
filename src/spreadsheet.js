@@ -1,11 +1,24 @@
 const fs = require('node:fs');
 const archiver = require('archiver');
 
-// CSV cannot retain Excel column widths or wrapping. The companion workbook
-// provides a readable view without adding another spreadsheet dependency.
+// A standalone styled Excel workbook; observed values stay literal, never formulas.
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 const column = index => { let text = ''; for (let n = index + 1; n; n = Math.floor((n - 1) / 26)) text = String.fromCharCode(65 + (n - 1) % 26) + text; return text; };
-const chunks = value => { const text = String(value ?? ''); const result = []; for (let index = 0; index < text.length; index += 30000) result.push(text.slice(index, index + 30000)); return result.length ? result : ['']; };
+function chunks(value, limit = 30000, maxLines = Infinity) {
+  const text = String(value ?? ''), result = [];
+  for (let offset = 0; offset < text.length;) {
+    let end = Math.min(offset + limit, text.length), newline = offset;
+    for (let count = 0; count < maxLines; count++) {
+      newline = text.indexOf('\n', newline);
+      if (newline < 0 || newline >= end) break;
+      newline++;
+      if (count + 1 === maxLines) end = newline;
+    }
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1]) && /[\uDC00-\uDFFF]/.test(text[end])) end--;
+    result.push(text.slice(offset, end)); offset = end;
+  }
+  return result.length ? result : [''];
+}
 function cell(value, row, index, style = 0) {
   // Inline string cells keep observed text literal, including =, + and @.
   return `<c r="${column(index)}${row}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
@@ -20,20 +33,20 @@ const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleShe
 async function writeSpreadsheet(file, product, rows) {
   const details = [row(['Product details', 'Observed content'], 1, {height: 30, styles: [1, 1]})];
   const first = rows[0] || {};
-  for (const [label, value] of [['Title', product.title || ''], ['Product URL', product.sourceUrl || ''], ['Description', product.descriptionText || ''], ['Seller Description', product.sellerDescriptionText || ''], ['Features', first.Features || ''], ['Specifications', first.Specifications || '']]) {
-    for (const [index, part] of chunks(value).entries()) {
+  for (const [label, value] of [['Title', product.title || ''], ['Product URL', product.sourceUrl || ''], ['Captured at', product.capturedAt || ''], ['Description', product.descriptionText || ''], ['Seller Description', product.sellerDescriptionText || ''], ['Features', first.Features || ''], ['Specifications', first.Specifications || '']]) {
+    for (const [index, part] of chunks(value, 1800, 20).entries()) {
       const count = Math.max(part.split('\n').length, Math.ceil(part.length / 110));
       details.push(row([index ? `${label} (continued ${index + 1})` : label, part], details.length + 1, {height: Math.min(409, Math.max(36, count * 16 + 12)), styles: [2, 0]}));
     }
   }
-  const columns = ['Title', 'Variation', 'Price', 'Size', 'Color', 'Images'];
+  const columns = ['Variation', 'Price', 'Size', 'Color', 'Title', 'Images'];
   const variations = [row(columns, 1, {height: 30, styles: columns.map(() => 1)})];
   for (const item of rows) {
     // Very long image lists are continued on explicit rows instead of being
     // silently cut at Excel's 32,767-character cell limit.
     const parts = columns.map(key => chunks(item[key] || ''));
     const count = Math.max(...parts.map(values => values.length));
-    for (let index = 0; index < count; index++) variations.push(row(parts.map((values, col) => values[index] ?? (col === 1 ? '(continued)' : '')), variations.length + 1, {height: 104, styles: [0, 2, 3, 0, 0, 0]}));
+    for (let index = 0; index < count; index++) variations.push(row(parts.map((values, col) => values[index] ?? (col === 0 ? '(continued)' : '')), variations.length + 1, {height: Math.min(409, Math.max(64, ...parts.map(values => Math.max((values[index] || '').split('\n').length, Math.ceil((values[index] || '').length / 45)) * 16 + 12))), styles: [2, 3, 0, 0, 0, 0]}));
   }
   const entries = {
     '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
@@ -42,7 +55,7 @@ async function writeSpreadsheet(file, product, rows) {
     'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
     'xl/styles.xml': styles,
     'xl/worksheets/sheet1.xml': sheet([26, 112], details),
-    'xl/worksheets/sheet2.xml': sheet([50, 34, 18, 20, 20, 64], variations, `A1:F${variations.length}`)
+    'xl/worksheets/sheet2.xml': sheet([46, 20, 22, 22, 60, 64], variations, `A1:F${variations.length}`)
   };
   await new Promise((resolve, reject) => {
     const stream = fs.createWriteStream(file, {flags: 'wx'});

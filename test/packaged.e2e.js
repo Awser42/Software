@@ -1,3 +1,4 @@
+const {workbookTable,archiveTable}=require('./workbook');
 // Native Windows acceptance check. Never report this as passed on Linux.
 const {_electron:electron}=require('playwright');
 const path=require('node:path');
@@ -32,26 +33,13 @@ function zipContents(file) {
   });
  });
 }
-function parseCsv(bytes) {
- const input=bytes.toString('utf8').replace(/^\uFEFF/,'');
- const rows=[];let row=[],cell='',quoted=false;
- for(let i=0;i<input.length;i++){
-  const character=input[i];
-  if(character==='"'){
-   if(quoted&&input[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;
-  }else if(character===','&&!quoted){row.push(cell);cell='';}
-  else if(character==='\r'&&!quoted&&input[i+1]==='\n'){row.push(cell);rows.push(row);row=[];cell='';i++;}
-  else cell+=character;
- }
- row.push(cell);rows.push(row);return rows;
-}
 (async()=>{
  if(process.platform!=='win32')throw new Error('This packaged EXE test requires Windows.');
  const data=await fs.mkdtemp(path.join(os.tmpdir(),'packaged-app-'));diagnosticDirectory=data;
- const executablePath=path.resolve('dist/win-unpacked/AliExpress Product Archiver.exe'),args=[`--user-data-dir=${data}`];
+ const executablePath=process.env.INSTALLED_APP_EXE||path.resolve('dist/win-unpacked/AliExpress Product Archiver.exe'),args=[`--user-data-dir=${data}`];
  markStage('launch baseline packaged EXE');let app=await electron.launch({executablePath,args});captureProcess(app);
  try {
-  markStage('wait for baseline application window');const page=await app.firstWindow();await page.waitForSelector('.link-url');markStage('exercise bundled Chromium and production archive');
+  markStage('wait for baseline application window');const page=await app.firstWindow();await page.waitForSelector('.link-url');if(process.env.INSTALLED_APP_EXE){const initial=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(initial.installation.installed,true);assert.equal(initial.installation.windows,true);await app.evaluate(({shell})=>{global.originalOpenExternal=shell.openExternal;shell.openExternal=async url=>{global.uninstallSettingsUrl=url;};});await page.locator('[data-tab="settings"]').click();await page.locator('#manageInstallation').click();assert.equal(await app.evaluate(()=>global.uninstallSettingsUrl),'ms-settings:appsfeatures');await app.evaluate(({shell})=>{shell.openExternal=global.originalOpenExternal;});await page.locator('[data-tab="bulk"]').click();}markStage('exercise bundled Chromium and production archive');
   const result=await app.evaluate(async({app})=>{
    const {Browser}=process.mainModule.require(app.getAppPath()+'/src/browser.js');
    const {convertToJpeg}=process.mainModule.require(app.getAppPath()+'/src/jpeg.js');
@@ -98,14 +86,14 @@ function parseCsv(bytes) {
    }finally{await browser.close();}
   });
   markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,state:'minimized'},{hidden:false,state:'normal'},{hidden:true,state:'minimized'}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-csv-xlsx-jpeg-v3');
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v4');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);
   const files=Object.keys(entries).filter(name=>!name.endsWith('/')).sort();
-  assert.deepEqual(files,['Images/variation-Size-20_20cm-001.jpg','product.csv','product.xlsx']);
-  assert(Object.keys(entries).every(name=>name==='product.csv'||name==='product.xlsx'||name==='Images/'||/^Images\/[^/]+\.jpg$/.test(name)));
-  const rows=parseCsv(entries['product.csv']);
+  assert.deepEqual(files,['Images/variation-Size-20_20cm-001.jpg','product.xlsx']);
+  assert(Object.keys(entries).every(name=>name==='product.xlsx'||name==='Images/'||/^Images\/[^/]+\.jpg$/.test(name)));
+  const rows=await workbookTable(entries['product.xlsx']);
   assert.deepEqual(rows,[columns,[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,'Images/variation-Size-20_20cm-001.jpg']]);
   const jpeg=entries[files[0]];assert.equal(jpeg.readUInt16BE(0),0xffd8);
   const decoded=await app.evaluate(({nativeImage},base64)=>{
@@ -114,7 +102,7 @@ function parseCsv(bytes) {
   },jpeg.toString('base64'));
   assert.deepEqual(decoded,{empty:false,width:320,height:192});
   await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/packaged-windows.png'});
-  console.log('PASS: native Windows packaged EXE launches bundled Chromium and exports the visible $8.15 variation price (not catalog $99.00) with all ten CSV fields plus decoded 320x192 JPEG from actual WebP bytes.');
+  console.log('PASS: native Windows packaged EXE launches bundled Chromium and exports the visible $8.15 variation price (not catalog $99.00) with all observed Excel fields plus decoded 320x192 JPEG from actual WebP bytes.');
   markStage('build future-version code-only fixture');const baseline=require('../package.json').version;const [major,minor,patch]=baseline.split('.').map(Number);const futureVersion=`${major}.${minor}.${patch+1}`;const preserved=await page.evaluate(async()=>{const initial=await window.desktop.call('initial');await window.desktop.call('settings',{...initial.settings,settleMs:1400,delayMs:900});return {output:initial.settings.output,settleMs:1400,delayMs:900};});const fixture=await buildUpdate(path.resolve('.'),path.join(data,'update-fixture'),{version:futureVersion});const zipBytes=await fs.readFile(fixture.path);assert(zipBytes.length<256*1024,'Code updates must remain small and omit the browser/runtime');
   markStage('stage future code using packaged UpdateManager');const staged=await app.evaluate(async({app},payload)=>{const {UpdateManager}=process.mainModule.require(app.getAppPath()+'/src/updater.js');const requested=[];const updater=new UpdateManager({appPath:app.getAppPath(),userData:app.getPath('userData'),runtimeVersion:process.versions.electron,transport:async(url,options)=>{requested.push(url);if(url.endsWith('/update-manifest.json'))return Buffer.from(JSON.stringify(payload.manifest));const bytes=Buffer.from(payload.zipBase64,'base64');options.onProgress?.(bytes.length,bytes.length);return bytes;}});const available=await updater.check();const installed=await updater.download();return {available,installed,requested,userData:app.getPath('userData')};},{manifest:fixture.manifest,zipBase64:zipBytes.toString('base64')});assert.equal(staged.available.status,'available');assert.equal(staged.installed.status,'ready');assert.equal(staged.requested.length,2);assert(staged.requested[1].endsWith('/'+fixture.manifest.asset));assert(!staged.requested.some(url=>/chromium|electron/i.test(url)));
   markStage('restart packaged EXE with staged update');await app.close();app=await electron.launch({executablePath,args});captureProcess(app);markStage('wait for updated application window');const updatedPage=await app.firstWindow();await updatedPage.waitForSelector('.link-url');const initial=await updatedPage.evaluate(()=>window.desktop.call('initial'));assert.equal(initial.update.currentVersion,futureVersion);assert.equal(initial.state.downloads.length,0);for(const [key,value]of Object.entries(preserved))assert.equal(initial.settings[key],value,`Preserved setting ${key}`);

@@ -1,3 +1,4 @@
+const {workbookTable,archiveTable}=require('./workbook');
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
@@ -34,8 +35,7 @@ async function fixture({small='normal',ambiguous=false,secondGroup=false}={}){
  </body></html>`);
  return page;
 }
-function csvRows(input){const s=input.toString('utf8').replace(/^\uFEFF/,'');const result=[];let row=[],cell='',quoted=false;for(let i=0;i<s.length;i++){const c=s[i];if(c==='"'){if(quoted&&s[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(cell);cell='';}else if(c==='\r'&&s[i+1]==='\n'&&!quoted){row.push(cell);result.push(row);row=[];cell='';i++;}else cell+=c;}row.push(cell);result.push(row);return result;}
-async function archiveRows(data){const result=await makeArchive(data,tmp,{get:async()=>{throw new Error('Unexpected image request');}});const bytes=await new Promise((resolve,reject)=>{yauzl.open(result.path,{lazyEntries:true},(error,zip)=>{if(error)return reject(error);zip.on('error',reject);zip.on('entry',entry=>{if(entry.fileName!=='product.csv'){zip.readEntry();return;}zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const chunks=[];stream.on('data',c=>chunks.push(c));stream.on('error',reject);stream.on('end',()=>{zip.close();resolve(Buffer.concat(chunks));});});});zip.on('end',()=>reject(new Error('product.csv missing')));zip.readEntry();});});return csvRows(bytes);}
+async function archiveRows(data){const result=await makeArchive(data,tmp,{get:async()=>{throw new Error('Unexpected image request');}});return archiveTable(result.path);}
 before(async()=>{tmp=await fs.mkdtemp(path.join(os.tmpdir(),'visible-price-tests-'));browser=await chromium.launch({headless:true,...(process.env.TEST_CHROMIUM?{executablePath:process.env.TEST_CHROMIUM}:existsSync('/usr/bin/chromium')?{executablePath:'/usr/bin/chromium'}:{})});});
 after(async()=>{await browser?.close();await fs.rm(tmp,{recursive:true,force:true});});
 test('snapshot reads only the visible selected product price and explicit size state',async()=>{
@@ -56,7 +56,7 @@ test('a delayed current-price update without a loading indicator is awaited befo
 test('equal variant prices require an observed price-panel rerender after the option switch',async()=>{
  const page=await fixture({small:'same-silent'});try{const data=product();await captureVisiblePrices(page,data,queue,options);assert.equal(data.variations.find(v=>v.attributes==='5:21').displayedPrice,'$8.15');assert((await page.evaluate(()=>window.priceUpdates)).includes('5:21'),'A stable old number alone is not confirmation of an equal price');}finally{await page.close();}
 });
-test('a selected size without a visible price stays blank in CSV',async()=>{
+test('a selected size without a visible price stays blank in Excel',async()=>{
  const page=await fixture({small:'blank'});try{const data=product();await captureVisiblePrices(page,data,queue,{...options,timeoutMs:450});assert.equal(data.variations.find(v=>v.attributes==='5:21').displayedPrice,null);const rows=await archiveRows(data);assert.equal(rows.find(r=>r[1]==='Size: 15X15cm')[2],'');}finally{await page.close();}
 });
 test('an initially ambiguous display price is kept as an unassigned product row',async()=>{

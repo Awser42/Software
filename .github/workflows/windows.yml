@@ -24,8 +24,6 @@ jobs:
       ELECTRON_BUILDER_COMPRESSION_LEVEL: '9'
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -34,7 +32,7 @@ jobs:
       - run: node node_modules/electron/install.js
       - name: Install standalone test browser
         run: npx playwright install chromium
-      - name: Unit and archive tests
+      - name: Unit and Excel archive tests
         run: npm test
       - name: Download pinned Windows Chromium
         run: npm run bundle:chromium
@@ -42,38 +40,11 @@ jobs:
         run: npm exec -- electron-builder --win --x64 --dir
       - name: Verify browser bytes and packaged runtime source
         run: node scripts/verify-package.js
-      - name: Verify reusable completed desktop evidence for unchanged app source
-        id: desktopProof
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Distribution-test retries can reuse the completed batch only when
-          # every app, dependency, browser-build and desktop-fixture input matches.
-          $testedSource = '6dc4d1e040bdb1a7f9148210ac2811b4d6953b70'
-          git diff --quiet $testedSource HEAD -- src package.json package-lock.json test/ui.e2e.js test/electron-harness.js test/fixtures.js scripts/bundle-chromium.js
-          if ($LASTEXITCODE -ne 0) { 'reuse=false' >> $env:GITHUB_OUTPUT; exit 0 }
-          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39577928036" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $run.head_sha -ne $testedSource) { throw 'Desktop evidence source could not be verified.' }
-          $job = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/119148115989" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $job.run_id -ne 39577928036) { throw 'Desktop evidence job could not be verified.' }
-          $passed = @($job.steps | Where-Object { $_.name -eq 'Practical desktop test using shipped Chromium (30-product batch)' -and $_.conclusion -eq 'success' })
-          if ($passed.Count -ne 1) { throw 'The prior desktop batch did not pass.' }
-          'reuse=true' >> $env:GITHUB_OUTPUT
-          'The unchanged application and fixtures retain the completed 30-product Windows batch from https://github.com/Awser42/Software/actions/runs/39577928036. This run separately verifies its rebuilt package and portable distribution.' >> $env:GITHUB_STEP_SUMMARY
-      - uses: actions/download-artifact@v4
-        if: steps.desktopProof.outputs.reuse == 'true'
-        with:
-          name: practical-test-evidence
-          path: test-results
-          github-token: ${{ github.token }}
-          run-id: 39577928036
-      - name: Practical desktop test using shipped Chromium (30-product batch)
-        if: steps.desktopProof.outputs.reuse != 'true'
+      - name: Practical desktop Excel-only test with 30-product batch
         env:
           E2E_BUNDLED: '1'
         run: node test/ui.e2e.js
-      - name: Test packaged Windows EXE visible price, CSV and JPEG export
+      - name: Test packaged Windows EXE visible price and Excel JPEG export
         run: node test/packaged.e2e.js
       - name: Build verified small app update without Chromium or Electron
         run: npm run build:update
@@ -83,10 +54,10 @@ jobs:
           E2E_BUNDLED: '1'
           LIVE_PRODUCT_URL: ${{ inputs.product_url || 'https://www.aliexpress.us/item/3256812916711444.html' }}
         run: node test/live-product.e2e.js
-      - name: Create single-file EXE with Chromium included
-        run: npm exec -- electron-builder --win portable --x64 --prepackaged dist/win-unpacked
-      - name: Verify actual portable launcher and small-update startup
-        run: node test/portable.e2e.js
+      - name: Create Windows Setup installer with uninstall support
+        run: npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked
+      - name: Verify actual install installed-app update and uninstall
+        run: node test/installer.e2e.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,9 +66,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
+          name: AliExpress-Windows-Setup-Chromium-included
           compression-level: 0
-          path: dist/*win-x64.exe
+          path: dist/*-Setup.exe
       - uses: actions/upload-artifact@v4
         with:
           name: AliExpress-small-code-update
@@ -119,11 +90,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Read package version
-        shell: bash
         run: echo "APP_VERSION=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
-          name: AliExpress-Product-Archiver-Windows-x64-Chromium-included
+          name: AliExpress-Windows-Setup-Chromium-included
           path: download
       - uses: actions/download-artifact@v4
         with:
@@ -134,52 +104,52 @@ jobs:
           name: AliExpress-small-code-update
           path: download
       - name: Review live-page evidence
-        shell: bash
         run: |
           test -s evidence/live-product.json
           jq -e '.status != "extraction-error" and .status != "error"' evidence/live-product.json
           cp evidence/live-product.json download/Live-product-check.json
-      - name: Prepare public EXE, ZIP and checksums from tested artifact
-        shell: bash
+      - name: Prepare tested installer ZIP and checksums
         run: |
-          test -s "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe"
+          test -s "download/AliExpress-Product-Archiver-$APP_VERSION-Setup.exe"
           cat > download/READ-ME.txt <<TEXT
           AliExpress Product Archiver $APP_VERSION - Windows 10/11 x64
-          Extract this ZIP and run AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe.
-          Chromium is included. No Node.js or separate browser download is needed.
-          Open Chromium / Login, sign into AliExpress, choose a folder, paste URLs and Run.
-          Each product ZIP contains product.csv and readable product.xlsx with title and descriptions,
-          variation, its visible price, size, color, features, specifications and image filenames
-          and an Images folder of real JPEG files. Missing values stay blank.
-          Description prefers the observed AliExpress AI overview, then seller text.
-          Small icons and duplicate images are filtered; previews retain photo proportions.
-          Chromium runs minimized until Show Chromium is clicked. Close software to its tray;
-          choose Quit in the tray menu to stop it. Manual login/verification still needs Show Chromium.
-          Settings > Check for updates downloads compatible small app-code updates from GitHub.
-          The full 1.4.0 package is needed once; later compatible updates keep Chromium installed.
-          Login and CAPTCHA are manual. Live account prices require your login.
-          The portable EXE is unsigned. Native Windows fixture tests passed for this build.
+          Run AliExpress-Product-Archiver-$APP_VERSION-Setup.exe.
+          Choose an installation folder. Chromium is included; no Node.js is needed.
+          Quit any older portable copy from its tray before installing.
+          Show Chromium / Login, sign into AliExpress, choose an output folder and Run links.
+          Each product ZIP contains ONLY product.xlsx and Images/*.jpg. No CSV is generated.
+          Product Details: title, URL, capture time, descriptions, features and specifications.
+          Variations: observed variation name, confirmed visible price, size, color, title and image filenames.
+          Missing content stays blank. Login and CAPTCHA are manual.
+          Chromium runs minimized until Show Chromium is clicked. Close the app to its tray;
+          use Quit in the tray menu to stop it completely.
+          Settings > Check for updates downloads compatible small code updates without Chromium.
+          Windows Settings > Apps > Installed apps > AliExpress Product Archiver > Uninstall removes the app.
+          Settings > Open Windows uninstall opens this Windows settings page.
+          Separate product exports and the saved login/settings profile are kept when uninstalling.
+          Older portable copies are separate files: Quit them and delete their EXE when no longer needed.
+          A small update changes a portable copy's app features but does not register an installer.
+          The installer is unsigned. Account-specific live prices require your own login.
           TEXT
           cd download
-          zip -0 "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" READ-ME.txt
+          zip -0 "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "AliExpress-Product-Archiver-$APP_VERSION-Setup.exe" READ-ME.txt
           unzip -t "AliExpress-Product-Archiver-$APP_VERSION-Download.zip"
-          sha256sum "AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "AliExpress-Product-Archiver-$APP_VERSION-Code-update.zip" update-manifest.json > SHA256SUMS.txt
-      - name: Publish only after all Windows practical tests pass
-        shell: bash
+          sha256sum "AliExpress-Product-Archiver-$APP_VERSION-Setup.exe" "AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "AliExpress-Product-Archiver-$APP_VERSION-Code-update.zip" update-manifest.json > SHA256SUMS.txt
+      - name: Publish only after Windows export install and uninstall tests pass
         run: |
           cat > release-notes.md <<TEXT
-          Windows 10/11 x64 portable app with Chromium included.
+          Excel-only product exports, refreshed light interface and a real Windows installer/uninstaller. Chromium is included.
 
-          Each product ZIP contains product.csv, a formatted product.xlsx workbook and actual JPEG files in Images/. CSV puts Title, Variation, Price, Size and Color first, followed by Description, Seller Description, Features, Specifications and Images. The workbook separates product details and variations with readable widths, wrapped text and frozen headers. Tiny decoded graphics, semantic UI icons, unrelated gallery sources and duplicate image contents are filtered. Product previews retain their original proportions. Modern lazy descriptions, native overviews, independent seller content, endpoints and description frames are captured when exposed; missing text is warned about and remains blank. Known selectable variations retain their individually confirmed visible price. Paste 15, 20 or 30 links into the numbered cells and each completed product is saved while the queue continues.
+          Download and run Setup.exe. Quit an older portable copy from its tray first. The installer adds Windows shortcuts and an Installed apps entry. Remove the app through Windows Settings > Apps > Installed apps, also accessible from the app's Settings. Separate exported archives and the saved login/settings profile are preserved. Old portable EXEs remain separate files and can be deleted after quitting them.
 
-          Chromium runs minimized by default; click Show Chromium for login or CAPTCHA, then Continue. The software can keep processing in the system tray. Settings includes Check for updates: after installing this full version once, compatible app-code updates are small ZIPs that reuse your existing Chromium and Electron. Updates are verified before installation and apply on restart while the queue is idle. Runtime or compatibility changes can still require a full download.
+          Each product ZIP now contains only product.xlsx and Images/*.jpg; no CSV is generated. Product Details contains the observed title, URL, capture time, description, seller description, features and specifications. Variations puts each variation name next to its confirmed visible price, size, color and image filenames. Excel widths, wrapping and frozen/filterable headers are retained; long descriptions continue over readable rows. Existing archives remain available and older-format links can be recaptured.
 
-          Download the EXE directly, or download and extract the Download.zip.
+          The redesigned interface has clearer product-link cells, workflow steps, queue totals, progress and Downloads. Chromium and the app retain background/tray controls. Settings > Check for updates can upgrade an existing 1.4.x copy using a small code ZIP without downloading Chromium again. Small code updates do not add Windows installer registration to a portable copy; use Setup for installed-app uninstall support.
 
-          Native Windows package, JPEG, visible-price and small-update checks for this distribution: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
-          The 30-product desktop batch is either run there or reused only after verifying unchanged application, dependency, browser-build and fixture inputs against completed source 6dc4d1e040bdb1a7f9148210ac2811b4d6953b70 in https://github.com/$GH_REPO/actions/runs/39577928036.
+          Full fresh native Windows verification: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Tested source: $TESTED_COMMIT
+          Checks include all unit/archive tests, the 30-product streaming batch, every Excel/JPEG export, source/browser bytes, actual installed EXE visible-price and small-update startup, registry registration, and real uninstall with separate exports preserved. No previous batch evidence is reused for this changed application.
 
-          Login and CAPTCHA are manual. Fixture tests do not verify your live account-specific prices. See Live-product-check.json for the separate anonymous live-page result; verification/login may prevent that check. The EXE is unsigned.
+          Login and CAPTCHA are manual. Missing values are never invented. Fixtures do not establish your live account prices; see Live-product-check.json for the separate anonymous result. The installer is unsigned.
           TEXT
-          gh release create "v$APP_VERSION" "download/AliExpress-Product-Archiver-$APP_VERSION-win-x64.exe" "download/AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "download/AliExpress-Product-Archiver-$APP_VERSION-Code-update.zip" download/update-manifest.json download/SHA256SUMS.txt download/Live-product-check.json --target "$TESTED_COMMIT" --title "Windows app $APP_VERSION - Excel, filtered JPEGs and small updates" --notes-file release-notes.md
+          gh release create "v$APP_VERSION" "download/AliExpress-Product-Archiver-$APP_VERSION-Setup.exe" "download/AliExpress-Product-Archiver-$APP_VERSION-Download.zip" "download/AliExpress-Product-Archiver-$APP_VERSION-Code-update.zip" download/update-manifest.json download/SHA256SUMS.txt download/Live-product-check.json --target "$TESTED_COMMIT" --title "Windows $APP_VERSION - Excel only, fresh UI and uninstall support" --notes-file release-notes.md
