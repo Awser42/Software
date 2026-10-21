@@ -4,7 +4,7 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-Download **AliExpress-Product-Archiver-1.4.1-Setup.exe** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
+Download **AliExpress-Product-Archiver-1.4.2-Setup.exe** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -14,6 +14,8 @@ Download **AliExpress-Product-Archiver-1.4.1-Setup.exe** from [GitHub Releases](
 6. If verification appears, show Chromium, complete it, then click **Continue after login / CAPTCHA** in Progress. Resume if you paused manually.
 
 **Roman Urdu:** Setup install karein, Chromium mein login karein, folder choose karke links paste karein aur Run karein. Har product ki ZIP mein sirf **product.xlsx** aur **Images/** hongay; CSV nahi banegi. Excel ki Variations sheet mein variation name ke saath uski apni confirmed price hogi.
+
+The top Features strip lists Excel-only exports, variation names/prices, JPEG photos, bulk links and background processing.
 
 The installer is unsigned. Settings, login profile and archive history stay under your Windows user account. Exported product ZIPs are saved to your chosen folder.
 
@@ -29,7 +31,7 @@ Every new product ZIP contains only:
 
 Extract the ZIP before opening the workbook. Excel sheets have readable widths, wrapped text and frozen headers; the variation list can be filtered. Variation and its price are adjacent. Long descriptions continue over labeled rows without losing text. Formula-like source text remains literal text. No CSV, JSON, HTML or extra reports are generated. Earlier exports remain available and are labeled by their earlier format. Add old links again to capture the new Excel-only format even when duplicate skipping is enabled.
 
-Prices come from the visible current-price field after selecting and confirming the corresponding variation. Hidden catalog amounts, crossed-out amounts, coupons and shipping prices are not substituted. Missing or unconfirmed prices remain blank. Unknown option combinations are not invented. Displayed currency is preserved. Increase **Page / variation settling time** if the page updates slowly.
+Prices and controls are captured before lazy description/specification tabs can unmount the main product panel. Modern price/SKU controls and title labels without colons are supported. If catalog attributes do not map to any visible option plan, the app explores actual enabled UI choices. Required unselected groups are selected from real enabled controls and settled before recording complete combinations. Prices come from the visible current-price field after selecting and confirming the corresponding variation. Hidden catalog amounts, crossed-out amounts, coupons and shipping prices are not substituted. Missing or unconfirmed prices remain blank. Unknown option combinations are not invented. Displayed currency is preserved. Increase **Page / variation settling time** if the page updates slowly.
 
 Description prefers the substantive visible AliExpress AI overview, including its actual disclaimer and text. This is observed page content; the software does not generate a summary. If unavailable, the lower seller description is used. Independent seller content and exposed description images are also captured from the observed DOM, lazy tabs, inline modules, endpoints and frames. If no description is exposed, the cells remain blank and the app displays a warning. Specifications and photos are not converted into invented prose.
 
@@ -49,7 +51,7 @@ A code update can give an older portable copy the Excel-only export and new UI. 
 
 ## Uninstall
 
-Quit through the app's tray, then open **Windows Settings → Apps → Installed apps → AliExpress Product Archiver → Uninstall**. The app's **Settings → Open Windows uninstall** button opens Windows' app-management page. The installer also creates Start menu / desktop shortcuts.
+Quit through the app's tray, then open **Windows Settings → Apps → Installed apps → AliExpress Product Archiver → Uninstall**. The app's **Settings → Uninstall software** button directly starts its installed Windows uninstaller, saves state, closes Chromium and quits the app. Finish the active queue first. The native confirmation window opens; this button does not merely open Windows Settings. Portable copies instead require Quit and deletion of their EXE. The installer also creates Start menu / desktop shortcuts.
 
 Uninstall removes installed application files, bundled Chromium and Windows installation registration. Separate exported product ZIPs and the saved login/settings profile are preserved. Older portable EXEs are separate files: Quit that copy and delete its EXE when no longer needed. Removing one copy does not delete other portable copies.
 
@@ -93,6 +95,6 @@ node test/installer.e2e.js
 
 Use `E2E_BUNDLED=1` for the desktop test to exercise the shipped browser; set it in your shell before running that test. `npm run build:win` downloads the pinned Windows Chromium and builds Setup directly. Browser binaries are generated resources, not committed to Git.
 
-The GitHub Windows workflow requires passing unit, 30-product desktop, packaged EXE and actual installer acceptance before publishing. A distribution-test retry can reuse completed batch/Setup artifacts only after Git and authenticated job records verify unchanged application, dependency, browser and fixture inputs. Installed source/browser bytes and actual installed export/update/uninstall checks still run again. Installer acceptance silently installs per user, checks the actual HKCU uninstall registration, launches the installed app to verify Excel/JPEG and a synthetic future code update, invokes the real uninstaller and confirms its application files/registration disappear while separate exports remain. Native Windows minimizes/restores Chromium and tests background/tray behavior. These results are separate from Linux tests.
+The GitHub Windows workflow requires passing unit, 30-product desktop, packaged EXE and actual installer acceptance before publishing. A distribution-test retry can reuse completed batch/Setup artifacts only after Git and authenticated job records verify unchanged application, dependency, browser and fixture inputs. Installed source/browser bytes and actual installed export/update/uninstall checks still run again. Installer acceptance silently installs per user, checks the actual HKCU uninstall registration, launches the installed app to verify Excel/JPEG and a synthetic future code update, clicks the installed app's Uninstall software button and confirms its application files/registration disappear while separate exports remain. Only the native test appends the vendor /S argument to automate confirmation; the normal product retains the native confirmation window. Native Windows minimizes/restores Chromium and tests background/tray behavior. These results are separate from Linux tests.
 
 `Live-product-check.json` records the anonymous live AliExpress attempt. A manual-login/verification result does not establish live fields or account-specific prices. No supplied real account session is present in fixtures or CI. See [VALIDATION.md](VALIDATION.md) for recorded results and their limits.

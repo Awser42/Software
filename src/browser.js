@@ -114,9 +114,25 @@ class Browser {
           await queue.manual('Click Show Chromium, complete login or CAPTCHA, open the product page there, then click Continue after login.');
           await page.waitForTimeout(2000); continue;
         }
+        const capturePrices=async product=>{
+          await page.evaluate(()=>window.scrollTo(0,0));
+          await captureVisiblePrices(page,product,queue,{
+          settleMs:settings.settleMs||3000,
+          onProgress:message=>this.notify(message),
+          onGate:async()=>{
+            if(await this.inspectGate(page)) {
+              if(!background) await this.show();
+              await queue.manual('Click Show Chromium, complete login or CAPTCHA, then click Continue to read the visible variation prices.');
+            }
+          }
+        });
+        };
         const overview=await captureOverview(page);
         const topSnapshot=await extractPage(page,responses,overview);
         const topData=topSnapshot.sourceUrl?.match(/\/(?:item|i)\/(\d+)\.html/i)?.[1]===item.productId?topSnapshot:{};
+        // Read prices while the main product controls are still mounted. Native
+        // description/specification tabs can unmount the selectable SKU panel.
+        if(topData.title){topData.productId=item.productId;await capturePrices(topData);}
         // Scroll through the product to trigger lazy-loaded description content.
         for (let n=0; n<6; n++) { await queue.checkpoint(); await page.evaluate(n=>window.scrollTo(0, n*850),n); await page.waitForTimeout(250); }
         await Promise.allSettled([...pending]);
@@ -147,17 +163,10 @@ class Browser {
           await queue.manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
         }
         data.productId=item.productId;
-        await page.evaluate(()=>window.scrollTo(0,0));
-        await captureVisiblePrices(page,data,queue,{
-          settleMs:settings.settleMs||3000,
-          onProgress:message=>this.notify(message),
-          onGate:async()=>{
-            if(await this.inspectGate(page)) {
-              if(!background) await this.show();
-              await queue.manual('Click Show Chromium, complete login or CAPTCHA, then click Continue to read the visible variation prices.');
-            }
-          }
-        });
+        if(topData.variations?.some(variant=>variant.displayedPrice)){
+          data.properties=topData.properties;data.variations=topData.variations;data.prices=topData.prices;
+          data.warnings.push(...(topData.warnings||[]));
+        }else await capturePrices(data);
         if(data.descriptionSource!=='ai-overview') {
           const lateOverview=await captureOverview(page);
           if(lateOverview?.text) {

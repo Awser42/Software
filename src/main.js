@@ -5,8 +5,9 @@ const {Queue}=require('./queue');
 const {Browser}=require('./browser');
 const {readArchivePreview,EXPORT_FORMAT}=require('./archive');
 const {UpdateManager,markStartupHealthy}=require('./updater');
+const {installationInfo,launchUninstaller}=require('./installation');
 let win, queue, browser, settings, statePath, tray, updater;
-let quitting=false;
+let quitting=false,uninstalling=false;
 if(!app.requestSingleInstanceLock()) app.quit();
 function showApp(){if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();}}
 app.on('second-instance',showApp);
@@ -76,8 +77,8 @@ function handle(name, fn) {ipcMain.handle(name, async(event,...args)=>{
   if(event.sender!==win?.webContents || event.senderFrame!==win.webContents.mainFrame) throw new Error('Untrusted caller');
   return fn(...args);
 });}
-handle('initial',async()=>({settings,state:queue.state(),update:updater.info(),installation:{windows:process.platform==='win32',installed:process.platform==='win32'&&!process.env.PORTABLE_EXECUTABLE_FILE&&await fs.access(path.join(path.dirname(process.execPath),'Uninstall AliExpress Product Archiver.exe')).then(()=>true,()=>false)}}));
-handle('manage-installation',async()=>{if(process.platform!=='win32')throw new Error('Windows uninstall is available on Windows.');await shell.openExternal('ms-settings:appsfeatures');});
+handle('initial',async()=>({settings,state:queue.state(),update:updater.info(),installation:await installationInfo()}));
+handle('uninstall',async()=>{if(queue.running)throw new Error('Finish the current run before uninstalling.');if(uninstalling)throw new Error('The uninstaller is already starting.');uninstalling=true;try{const result=await launchUninstaller({beforeLaunch:async()=>{await queue.publish();await writes;await browser.close();}});quitting=true;setTimeout(()=>app.quit(),150);return result;}catch(error){uninstalling=false;throw error;}});
 handle('folder',async()=>{const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory']}); if(!result.canceled) {settings.output=result.filePaths[0]; await queue.publish();} return settings;});
 handle('settings',async value=>{
   if(queue.running) throw new Error('Pause does not end a run. Change settings after the run finishes.');

@@ -39,7 +39,7 @@ function zipContents(file) {
  const executablePath=process.env.INSTALLED_APP_EXE||path.resolve('dist/win-unpacked/AliExpress Product Archiver.exe'),args=[`--user-data-dir=${data}`];
  markStage('launch baseline packaged EXE');let app=await electron.launch({executablePath,args});captureProcess(app);
  try {
-  markStage('wait for baseline application window');const page=await app.firstWindow();await page.waitForSelector('.link-url');if(process.env.INSTALLED_APP_EXE){const initial=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(initial.installation.installed,true);assert.equal(initial.installation.windows,true);await app.evaluate(({shell})=>{global.originalOpenExternal=shell.openExternal;shell.openExternal=async url=>{global.uninstallSettingsUrl=url;};});await page.locator('[data-tab="settings"]').click();await page.locator('#manageInstallation').click();assert.equal(await app.evaluate(()=>global.uninstallSettingsUrl),'ms-settings:appsfeatures');await app.evaluate(({shell})=>{shell.openExternal=global.originalOpenExternal;});await page.locator('[data-tab="bulk"]').click();}markStage('exercise bundled Chromium and production archive');
+  markStage('wait for baseline application window');const page=await app.firstWindow();await page.waitForSelector('.link-url');if(process.env.INSTALLED_APP_EXE){const initial=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(initial.installation.installed,true);assert.equal(initial.installation.windows,true);await page.locator('[data-tab="settings"]').click();assert.equal(await page.locator('#manageInstallation').textContent(),'Uninstall software');assert.equal(await page.locator('#manageInstallation').isEnabled(),true);await page.locator('[data-tab="bulk"]').click();}markStage('exercise bundled Chromium and production archive');
   const result=await app.evaluate(async({app})=>{
    const {Browser}=process.mainModule.require(app.getAppPath()+'/src/browser.js');
    const {convertToJpeg}=process.mainModule.require(app.getAppPath()+'/src/jpeg.js');
@@ -86,7 +86,7 @@ function zipContents(file) {
    }finally{await browser.close();}
   });
   markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,state:'minimized'},{hidden:false,state:'normal'},{hidden:true,state:'minimized'}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v4');
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v5');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);

@@ -53,7 +53,7 @@ function assignObservation(variant,state) {
   if (targets.length) variant.name=targets.map(t=>[t.groupName,t.valueName].filter(Boolean).join(': ')).join(' / ');
   variant.observedImageUrls=[...new Set(targets.map(t=>t.image).filter(Boolean))];
 }
-async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5000,onGate=async()=>{},onProgress=()=>{},maxObservedRows=200}={}) {
+async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=10000,onGate=async()=>{},onProgress=()=>{},maxObservedRows=200}={}) {
   product.warnings ||= []; product.prices ||= {}; product.variations ||= [];
   product.prices.mode='visible-variation';
   for (const variant of product.variations) { variant.displayedPrice=null; variant.observedOptions=[]; variant.observedImageUrls=[]; }
@@ -80,8 +80,41 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
     }
     return null;
   };
-  const initial=await waitStable();
-  const snapshot=initial || await readPriceState(page); checkPage(snapshot);
+  let initial=await waitStable();
+  let snapshot=initial || await readPriceState(page); checkPage(snapshot);
+  const beforeSeeding=snapshot;
+  // Some products require both Color and Size before exposing any price. Select
+  // only real enabled controls, confirm every selection, then require a fresh
+  // price for the complete selected state. Partial states never receive prices.
+  if(snapshot.groups.length&&!selectionTargets(snapshot)) {
+    let lastBefore=null,failed=false;
+    for(let index=0;index<snapshot.groups.length;index++) {
+      await queue.checkpoint();await onGate();
+      const current=await readPriceState(page);checkPage(current);
+      const group=current.groups[index];if(!group){failed=true;break;}
+      const selected=group.values.filter(value=>value.selected&&!value.disabled);
+      if(selected.length===1)continue;
+      if(selected.length>1){failed=true;break;}
+      const value=group.values.find(value=>!value.disabled&&value.name);
+      if(!value){failed=true;break;}
+      const target={groupId:group.id,groupName:group.name,valueId:value.id,valueName:value.name};
+      await beginPriceObservation(page);lastBefore=current;
+      if(!await selectObservedValue(page,target)){failed=true;break;}
+      let confirmed=false;
+      const deadline=Date.now()+Math.max(timeoutMs,300);
+      while(Date.now()<deadline){await queue.checkpoint();await onGate();const observed=await readPriceState(page);checkPage(observed);if(selectedTarget(observed,target)){confirmed=true;break;}await page.waitForTimeout(100);}
+      if(!confirmed){failed=true;break;}
+      // Finish the previous option's network work before selecting the next
+      // required group. A late partial-selection response must not freshen the
+      // final combination's price observer.
+      try{await page.waitForLoadState('networkidle',{timeout:Math.max(timeoutMs,1500)});}catch{failed=true;break;}
+      await page.waitForTimeout(Math.max(150,settleMs));
+    }
+    const selected=await readPriceState(page);checkPage(selected);
+    if(!failed&&selectionTargets(selected))initial=await waitStable(selectionTargets(selected),null,lastBefore);
+    else initial=null;
+    snapshot=initial||selected;
+  }
   product.prices.displayed=initial?.displayed||null;
   product.prices.displayedUnassigned=!!initial?.displayed;
   // An unselected single required group has no intermediate combination: it
@@ -91,7 +124,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
     product.warnings.push('Visible current price did not settle. Hidden catalog prices were not substituted. Select required options in Chromium and retry if the product has no default selection.');
     return product;
   }
-  const originalSelection=selectionTargets(snapshot)||snapshot.groups.flatMap(group=>{
+  const originalSelection=selectionTargets(beforeSeeding)||beforeSeeding.groups.flatMap(group=>{
     const selected=group.values.filter(v=>v.selected&&!v.disabled);
     return selected.length===1?[{groupId:group.id,groupName:group.name,valueId:selected[0].id,valueName:selected[0].name}]:[];
   });
@@ -116,7 +149,11 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
     observed=observed||await waitStable(targets,skuId);
     return {state:observed&&matches(observed,targets,skuId)&&singlePrice(observed.displayed)?observed:null,unavailable:false};
   };
-  const plans=product.variations.map(variant=>({variant,targets:targetsFor(variant,product.properties||[])}));
+  let plans=product.variations.map(variant=>({variant,targets:targetsFor(variant,product.properties||[])}));
+  const rawVariants=product.variations;
+  const uiMapped=plan=>plan.targets?.length===snapshot.groups.length&&plan.targets.every(target=>{const group=findGroup(snapshot,target);return group&&group.values.some(value=>sameValue(value,target));});
+  const useObservedUI=snapshot.groups.length>0&&!plans.some(uiMapped);
+  if(useObservedUI){plans=[];product.variations=[];if(rawVariants.length)product.warnings.push('Catalog options could not be mapped to the visible controls; variations are captured from actual selectable page options instead.');}
   if (!plans.length && snapshot.groups.length===1) {
     const group=snapshot.groups[0];
     for (const value of group.values) {
@@ -201,8 +238,9 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=5
       await selectObservedValue(page,target).catch(()=>false);
     }
   }
+  if(useObservedUI&&!product.variations.length)product.variations=rawVariants;
   const missing=plans.filter(p=>p.variant.displayedPrice===null).length;
-  if (missing) product.warnings.push(`${missing} variation price(s) could not be confirmed in the visible current-price panel; their CSV prices are blank.`);
+  if (missing) product.warnings.push(`${missing} variation price(s) could not be confirmed in the visible current-price panel; their Excel prices are blank.`);
   if (!plans.length && snapshot.groups.length>1 && !product.variations.length) product.warnings.push('No full option combination could be confirmed. Only an observed product-level price was retained; combinations were not invented.');
   return product;
 }

@@ -71,7 +71,7 @@ test('Chromium converts actual PNG and WebP bytes to full-size JPEG with white t
 test('archive contains styled Excel only and original-size JPEG Images; never overwrites',async()=>{
  const p=await extractPage(page);p.productId='123456';const clean=await parseDescription(page,p.descriptionHtml);p.descriptionHtml=clean.html;p.descriptionText=clean.text;
  const request={get:async url=>({ok:()=>true,headers:()=>({'content-type':url.endsWith('.jpg')?'image/jpeg':'image/png'}),body:async()=>productImage(url,url.endsWith('.jpg')?'image/webp':'image/png')})};
- const result=await makeArchive(p,tmp,request,async()=>{},encode);assert.equal(result.images,3);assert.equal(result.exportFormat,'product-xlsx-jpeg-v4');assert(result.preview.startsWith('data:image/jpeg;'));const contents=await zipContents(result.path);const files=Object.keys(contents).filter(n=>!n.endsWith('/'));
+ const result=await makeArchive(p,tmp,request,async()=>{},encode);assert.equal(result.images,3);assert.equal(result.exportFormat,'product-xlsx-jpeg-v5');assert(result.preview.startsWith('data:image/jpeg;'));const contents=await zipContents(result.path);const files=Object.keys(contents).filter(n=>!n.endsWith('/'));
  assert.equal(files.length,4);assert(!files.includes('product.csv')); assert(files.includes('product.xlsx'));assert(files.filter(n=>!['product.csv','product.xlsx'].includes(n)).every(n=>/^Images\/.+\.jpg$/.test(n)));assert(files.some(n=>/Blue/i.test(n)),'Variation image filename must identify the observed variation');
  for(const file of files.filter(n=>n.startsWith('Images/'))){assert.equal(contents[file].readUInt16BE(0),0xffd8);const decoded=await decode(contents[file]);assert.equal(decoded.width,320);assert.equal(decoded.height,192);}
  const rows=await workbookTable(contents['product.xlsx']);assert.deepEqual(rows[0],columns);assert.equal(rows.length,2);const [row]=rowObjects(rows);assert.equal(row.Title,'Cotton Shirt / Summer');assert.equal(row.Description,'Real cotton description');assert.equal(row['Seller Description'],'Real cotton description');assert.equal(row.Variation,'Color: Blue / Size: Large');assert.equal(row.Size,'Large');assert.equal(row.Color,'Blue');assert(row.Specifications.includes('Material: Cotton'));assert.equal(row.Images.split('\n').length,3);for(const file of row.Images.split('\n'))assert(contents[file]);assert.match(row.Price,/USD/);assert.match(row.Price,/12\.34/);
@@ -109,7 +109,7 @@ test('URL validation, tracking removal and strict host checks',()=>{
 test('queue handles pause/resume, manual verification, retry, duplicates, and persistence',async()=>{
  let attempts=0,saved;const q=new Queue({save:async s=>{saved=JSON.parse(JSON.stringify(s));},extract:async(item,settings,q)=>{
    await q.checkpoint();if(item.productId==='2'&&attempts++===0)throw new Error('Temporary failure');
-   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:'product-xlsx-jpeg-v4',priceMode:'visible-variation-v1'};
+   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:'product-xlsx-jpeg-v5',priceMode:'visible-variation-v1'};
  }});
  await fs.writeFile(path.join(tmp,'existing.zip'),'zip');
  const added=await q.add(['https://www.aliexpress.com/item/1.html','https://www.aliexpress.us/item/1.html','https://www.aliexpress.com/item/2.html']);assert.equal(added[1].status,'duplicate');
@@ -133,3 +133,5 @@ test('version 1.3 exports with blank descriptions or UI icons can be captured ag
 });
 
 test('version 1.4.0 archives can be recaptured as Excel-only without deleting existing exports',async()=>{const file=path.join(tmp,'v14-product.zip');await fs.writeFile(file,'earlier Excel and CSV');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'59',path:file,exportFormat:'product-csv-xlsx-jpeg-v3',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/59.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'earlier Excel and CSV');});
+
+test('version 1.4.1 exports with unconfirmed prices can be recaptured in the corrected variation format',async()=>{const file=path.join(tmp,'v141-product.zip');await fs.writeFile(file,'earlier workbook');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'60',path:file,exportFormat:'product-xlsx-jpeg-v4',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/60.html']))[0].status,'pending');});

@@ -3,8 +3,8 @@
 function inspectPricePage(selection) {
   const normalize = value => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
   const key = value => normalize(value).toLowerCase();
-  const groupSelector = '[class*="sku-item--property"], [class*="sku-item--group"], .sku-property, [role="radiogroup"][data-sku-property-id]';
-  const titleSelector = '[class*="sku-item--title"], .sku-title, .sku-property-name, [data-sku-title]';
+  const groupSelector = '[class*="sku-item--property"], [class*="sku-item--group"], .sku-property, [class*="sku-property--"], [data-sku-property], [data-sku-property-id], [role="radiogroup"][aria-label]';
+  const titleSelector = '[class*="sku-item--title"], .sku-title, .sku-property-name, [data-sku-title], [class*="sku-item--label"]';
   const isVisible = element => {
     if (!element || element.closest('[hidden], [aria-hidden="true"], [role="dialog"], [role="tooltip"], dialog')) return false;
     const style = getComputedStyle(element);
@@ -13,7 +13,7 @@ function inspectPricePage(selection) {
   const excluded = element => {
     for (let node = element; node && node !== document.body; node = node.parentElement) {
       if (['DEL', 'S', 'STRIKE', 'ASIDE', 'HEADER', 'FOOTER', 'NAV'].includes(node.tagName)) return true;
-      if (/recommend|related|sidebar|shipping|delivery|coupon|discount|original|old[-_]?price|crossed|strikethrough|(?:^|[\s_-])reviews?(?:[\s_-]|$)/i.test(String(node.className || ''))) return true;
+      if (/recommend|related|sidebar|shipping|delivery|coupon|original|old[-_]?price|crossed|strikethrough|(?:^|[\s_-])reviews?(?:[\s_-]|$)/i.test(String(node.className || ''))) return true;
       if (getComputedStyle(node).textDecorationLine.includes('line-through')) return true;
     }
     return false;
@@ -44,7 +44,7 @@ function inspectPricePage(selection) {
     if (element.getAttribute('aria-pressed') === 'true' || element.getAttribute('aria-checked') === 'true' || /^(true|1)$/i.test(element.getAttribute('data-selected') || '') || element.getAttribute('data-state') === 'checked') return true;
     if (element.matches('input') && element.checked) return true;
     if (element.querySelector('input:checked')) return true;
-    return String(element.className || '').split(/\s+/).some(token => !/unselected|not[-_]selected|inactive/i.test(token) && /(?:^|[-_])(?:selected|active|checked)(?:[-_]|$)/i.test(token));
+    return String(element.className || '').split(/\s+/).some(token => !/unselected|not[-_]?selected|inactive/i.test(token) && (/(?:^|[-_])(?:selected|active|checked)(?:[-_]|$)/i.test(token) || /(?:sku|property|option).*(?:Selected|Checked|Active)(?:[-_]|$)/.test(token)));
   };
   const disabledOption = element => {
     if (element.disabled || element.closest('fieldset[disabled]') || [element.getAttribute('aria-disabled'), element.getAttribute('data-disabled')].some(value => /^(true|1)$/i.test(value || ''))) return true;
@@ -66,8 +66,8 @@ function inspectPricePage(selection) {
     const title = [...element.querySelectorAll(titleSelector)].find(node => isVisible(node) && node.closest(groupSelector) === element);
     const label = title ? visibleText(title) : normalize(element.getAttribute('aria-label'));
     if (!label) continue;
-    const list = [...element.querySelectorAll('[class*="sku-item--skus"], .sku-property-list, [role="radiogroup"]')].find(node => isVisible(node) && node.closest(groupSelector) === element) || element;
-    const optionSelector = '[data-sku-col], [data-sku-value-id], [data-property-value-id], [data-sku-id], .sku-property-item, li, [class*="sku-item--text"], [class*="sku-item--image"], [class*="sku-item--item"], [role="radio"]';
+    const list = [...element.querySelectorAll('[class*="sku-item--skus"], [class*="sku-item--options"], .sku-property-list, [role="radiogroup"]')].find(node => isVisible(node) && node.closest(groupSelector) === element) || element;
+    const optionSelector = '[data-sku-col], [data-sku-value-id], [data-property-value-id], [data-sku-id], .sku-property-item, li, [class*="sku-item--text"], [class*="sku-item--image"], [class*="sku-item--item"], [class*="sku-item--skusItem"], [class*="sku-item--skus-item"], [role="radio"]';
     const candidates = [...list.querySelectorAll(optionSelector + (list !== element || element.matches('[role="radiogroup"]') ? ', button' : ''))]
       .filter(node => node.closest(groupSelector) === element && safeOption(node));
     // A parent option and its nested span may both carry SKU attributes. Keep
@@ -92,6 +92,9 @@ function inspectPricePage(selection) {
       const leading = normalize([...title.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join(''));
       if (leading && leading !== label) name = leading.replace(/[:：]\s*$/, '').trim();
     }
+    const declaredName=firstAttribute(element,['data-property-name','data-sku-property-name','aria-label']);
+    if(declaredName)name=declaredName;
+    else if(!/[:：]/.test(label)){const selected=values.filter(value=>value.selected);if(selected.length===1&&name.endsWith(selected[0].name)&&name.length>selected[0].name.length)name=name.slice(0,-selected[0].name.length).trim();}
     groups.push({id, name, values, element});
   }
 
@@ -126,7 +129,7 @@ function inspectPricePage(selection) {
     }
     return best;
   };
-  const selectors = ['[class*="price-default--current"]', '[class*="price--current"]', '[class*="price--sale"]', '.product-price-current', '[itemprop="price"]'];
+  const selectors = ['[class*="price-default--current"]', '[class*="price--current"]', '[class*="price--sale"]', '.product-price-current', '[data-pl="product-price"]', '[data-testid="current-price"]', '[class*="es--price"]', '.product-price-value', '[itemprop="price"]'];
   const currentPrice = () => {
     const prices = [];
     const seen = new Set();
@@ -135,10 +138,10 @@ function inspectPricePage(selection) {
         if (seen.has(element) || !isVisible(element) || excluded(element)) continue;
         seen.add(element);
         const text = visibleText(element).replace(/([$€£¥₹₽₩])\s+(?=\d)/g, '$1').replace(/(\d)\s*([.,])\s*(?=\d)/g, '$1$2');
-        if (/\d/.test(text)) prices.push({element, text, priority, distance:distance(element)});
+        if (/\d/.test(text) && !/\b(?:shipping|delivery|coupon|save|off|installment|per month)\b|%/i.test(text)) prices.push({element, text, priority, distance:distance(element)});
       }
     });
-    prices.sort((a, b) => a.priority - b.priority || a.distance - b.distance);
+    prices.sort((a, b) => a.distance - b.distance || a.priority - b.priority);
     return prices[0] || null;
   };
   const current = currentPrice();

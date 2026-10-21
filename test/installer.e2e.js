@@ -4,6 +4,7 @@ const path=require('node:path');
 const os=require('node:os');
 const {spawn}=require('node:child_process');
 const assert=require('node:assert/strict');
+const {_electron:electron}=require('playwright');
 const pkg=require('../package.json');
 const audit={version:pkg.version,status:'running',stages:[]};
 function stage(name){audit.stages.push({name,at:new Date().toISOString()});console.log('INSTALLER_STAGE '+name);}
@@ -24,8 +25,18 @@ async function registration(){const text=await run('powershell.exe',['-NoProfile
   stage('verify installed source and bundled browser bytes');await run(process.execPath,['scripts/verify-package.js',path.join(installDirectory,'resources')]);audit.sourceVerified=true;
   stage('run installed app export browser and code-update acceptance');await run(process.execPath,['test/packaged.e2e.js'],{env:{...process.env,INSTALLED_APP_EXE:executable}});
   await fs.mkdir(exportDirectory,{recursive:true});const exportFile=path.join(exportDirectory,'keep-my-export.txt');await fs.writeFile(exportFile,'User exports must survive uninstall.');
-  stage('uninstall through actual registered uninstaller');await run(uninstaller,['/S']);await until(async()=>!(await exists(executable))&&!(await exists(uninstaller)));await until(async()=>!(await exists(installDirectory)));installed=false;
-  stage('verify unregister and preserve user exports');const remaining=await registration();assert(!remaining.some(item=>String(item.UninstallString||'').toLowerCase().includes(uninstaller.toLowerCase())));assert.equal(await fs.readFile(exportFile,'utf8'),'User exports must survive uninstall.');audit.status='passed';audit.registered=true;audit.installedAppTest=true;audit.uninstalled=true;audit.exportsPreserved=true;
+  stage('uninstall using the installed app button and actual uninstaller');
+  const buttonApp=await electron.launch({executablePath:executable,args:[`--user-data-dir=${path.join(directory,'button-profile')}`]});
+  try{
+   const page=await buttonApp.firstWindow();await page.waitForSelector('.link-url');
+   assert.equal(await page.locator('.feature-strip').isVisible(),true);
+   await buttonApp.evaluate(()=>{const childProcess=process.mainModule.require('node:child_process');const original=childProcess.spawn;childProcess.spawn=(file,args,options)=>{if(!file.endsWith('Uninstall AliExpress Product Archiver.exe'))throw new Error('Unexpected uninstall target');if(JSON.stringify(args)!==JSON.stringify(['/currentuser']))throw new Error('Unexpected product uninstall arguments');return original(file,[...args,'/S'],options);};});
+   await page.locator('[data-tab="settings"]').click();
+   await page.locator('#manageInstallation').click();
+   await until(()=>buttonApp.process().exitCode!==null);
+  }finally{if(buttonApp.process().exitCode===null)await buttonApp.close().catch(()=>{});}
+  await until(async()=>!(await exists(executable))&&!(await exists(uninstaller)));await until(async()=>!(await exists(installDirectory)));installed=false;
+  stage('verify unregister and preserve user exports');const remaining=await registration();assert(!remaining.some(item=>String(item.UninstallString||'').toLowerCase().includes(uninstaller.toLowerCase())));assert.equal(await fs.readFile(exportFile,'utf8'),'User exports must survive uninstall.');audit.status='passed';audit.registered=true;audit.installedAppTest=true;audit.uninstalled=true;audit.uninstallViaAppButton=true;audit.nativeWizardTestMode='The test adds /S to the observed fixed /currentuser spawn, invoking the real uninstaller without its confirmation UI.';audit.exportsPreserved=true;
   console.log('PASS: actual Windows Setup installed and registered the app, the installed EXE exported Excel/JPEG and applied a small update, and uninstall removed its files and registration while keeping separate user exports.');
  }catch(error){audit.status='failed';audit.error={message:error.message,stack:error.stack};throw error;}
  finally{await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/installer.json',JSON.stringify(audit,null,2)+'\n');if(installed&&await exists(uninstaller))await run(uninstaller,['/S']).catch(()=>{});await fs.rm(directory,{recursive:true,force:true,maxRetries:10,retryDelay:300}).catch(()=>{});}
