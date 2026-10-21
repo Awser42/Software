@@ -1,4 +1,4 @@
-name: Inspect native portable test failure
+name: Inspect native installer build failure
 on:
   push:
     branches: [diagnostics-v14]
@@ -16,22 +16,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api --allow-escape-sequences repos/${{ github.repository }}/actions/jobs/119157870817/logs > /tmp/native-job.txt 2> /tmp/diagnostic-error.txt || true
+          gh api --allow-escape-sequences repos/${{ github.repository }}/actions/jobs/119181336123/logs > /tmp/native-job.txt 2> /tmp/diagnostic-error.txt || true
           python3 - <<'PY'
           from pathlib import Path
           import re
           text=Path('/tmp/native-job.txt').read_bytes().decode('utf-8',errors='replace')
           text=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
-          start=text.find('##[group]Run node test/portable.e2e.js')
+          start=text.find('##[group]Run npm exec -- electron-builder --win nsis')
           if start<0: text=Path('/tmp/diagnostic-error.txt').read_text()+'\n'+text; start=0
           stop=text.find('##[group]Run actions/upload-artifact',start+10)
           result=text[start:stop if stop>=0 else None][-18000:]
-          target=Path('validation/diagnostics/1.4.0-portable-failure.txt')
+          target=Path('validation/diagnostics/1.4.1-installer-failure.txt')
           target.parent.mkdir(parents=True,exist_ok=True)
           target.write_text(result)
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add validation/diagnostics/1.4.0-portable-failure.txt
+          git add validation/diagnostics/1.4.1-installer-failure.txt
           git commit -m 'Record packaged-test failure trace [skip ci]'
           git push origin HEAD:diagnostics-v14
