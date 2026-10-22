@@ -36,8 +36,8 @@ async function until(check){for(let n=0;n<200;n++){if(await check())return;await
     const options=await instance.evaluate(()=>global.failureDialogs[0]);assert.equal(options.defaultId,0);assert.equal(options.cancelId,0);
     await page.locator('#failedSearch').fill('Product 1 unavailable');
     await instance.evaluate(()=>{global.failureFixture.successful.add('1');global.failureFixture.blocked=true;});await page.getByRole('button',{name:'Retry link',exact:true}).click();
-    await until(async()=>(await current()).state.running);assert.equal((await current()).state.items.find(item=>item.id===firstId).attempts,2);
-    await page.locator('[data-tab="failed"]').click();await page.locator('#failedSearch').fill('');assert.equal(await page.locator('.failure-row').count(),1);assert.equal(await page.locator('#retryFailures').isDisabled(),true);
+    await until(async()=>{const {state}=await current(),item=state.items.find(item=>item.id===firstId);return state.running&&item.status==='running'&&item.attempts===2;});
+    await page.locator('[data-tab="failed"]').click();await page.locator('#failedSearch').fill('');await until(async()=>await page.locator('.failure-row').count()===1&&await page.locator('#retryFailures').isDisabled());
     await assert.rejects(page.evaluate(()=>window.desktop.call('retry-failed')),/Wait for the run/);
     await until(()=>instance.evaluate(()=>typeof global.failureFixture.release==='function'));await instance.evaluate(()=>{global.failureFixture.blocked=false;global.failureFixture.release();});await until(async()=>!(await current()).state.running);
     assert.deepEqual(await instance.evaluate(()=>global.failureFixture.seen),['1']);assert.equal((await current()).state.items.find(item=>item.productId==='1').status,'done');audit.isolatedRetry=true;
