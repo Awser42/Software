@@ -4,9 +4,9 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-Existing installations: apply the **1.4.6 small update** through Settings. It adds an automatic Failed Links folder and retains the responsive workspace improvements without downloading the runtime again.
+Existing installations: apply the **1.4.7 small update** through Settings. It fixes incomplete design/size/hoop pricing and hardens history recovery, queue errors and browser security without downloading the runtime again.
 
-New installations can use the optional **1.4.6 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
+New installations can use the optional **1.4.7 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -23,6 +23,8 @@ Unchanged archive cards, photos and open previews are reused during progress upd
 
 The installer is unsigned. Settings, login profile and archive history stay under your Windows user account. Exported product ZIPs are saved to your chosen folder.
 
+See [COMMERCIAL-READINESS.md](COMMERCIAL-READINESS.md) for the review, fixed issues and remaining release-owner requirements. This is not a claim of commercial certification.
+
 ## Excel-only export
 
 Every new product ZIP contains only:
@@ -36,6 +38,8 @@ Every new product ZIP contains only:
 Extract the ZIP before opening the workbook. Excel sheets have readable widths, wrapped text and frozen headers; the variation list can be filtered. Variation and its price are adjacent. Long descriptions continue over labeled rows without losing text. Formula-like source text remains literal text. No CSV, JSON, HTML or extra reports are generated. Earlier exports remain available and are labeled by their earlier format. Add old links again to capture the new Excel-only format even when duplicate skipping is enabled.
 
 Prices and controls are captured before lazy description/specification tabs can unmount the main product panel. Modern price/SKU controls and title labels without colons are supported. If catalog attributes do not map to any visible option plan, the app explores actual enabled UI choices. Required unselected groups are selected from real enabled controls and settled before recording complete combinations. Prices come from the visible current-price field after selecting and confirming the corresponding variation. Hidden catalog amounts, crossed-out amounts, coupons and shipping prices are not substituted. Missing or unconfirmed prices remain blank. Unknown option combinations are not invented. Displayed currency is preserved. Increase **Page / variation settling time** if the page updates slowly.
+
+Partial catalogs no longer limit capture to one size/hoop per design. Each actual enabled design + size + hoop/pack combination is selected and freshly confirmed, with its own Excel price and matching cost-labelled images. A stale selected-SKU marker cannot override the visible selected options. Already visited combinations are skipped; bounded discovery warns if additional combinations remain. Re-add earlier links for the new v8 capture format; earlier ZIPs remain untouched.
 
 Description prefers the substantive visible AliExpress AI overview, including its actual disclaimer and text. This is observed page content; the software does not generate a summary. If unavailable, the lower seller description is used. Independent seller content and exposed description images are also captured from the observed DOM, lazy tabs, inline modules, endpoints and frames. If no description is exposed, the cells remain blank and the app displays a warning. Specifications and photos are not converted into invented prose.
 
@@ -52,6 +56,8 @@ An extraction failure automatically moves that product into the in-app **Failed 
 After the current run finishes, retry one link or all failures. Retried links return to Progress; success leaves the failure folder, while another failure returns with the latest error and attempt count. Failures survive restart and are not removed by Downloads history clearing or clearing completed queue entries. Removing one/all failures requires a Cancel-first confirmation and preserves active products, downloads, settings and login.
 
 ## Background work
+
+History uses flushed atomic replacement and a local mirror backup. A damaged primary file is preserved and restored from a valid backup; unrecoverable history stops startup instead of silently starting over. Deletions are mirrored too. Output-folder errors keep pending work retryable, and the folder cannot be changed during a run. Keep an external backup of valuable archives/profile data; a local mirror is not a device-loss backup.
 
 On Windows, Chromium's own windows are fully hidden by default, not merely minimized. **Hide Chromium** identifies Chromium through CDP and targets only its process; the software stays visible. **Show Chromium / Login** restores the tab needing verification in the same persistent login session. Linux uses the available window-manager minimize behavior. Login/verification pauses processing without forcing Chromium forward.
 
@@ -86,6 +92,7 @@ On Linux, install the Electron/Chromium system libraries and a graphical display
 
 ```sh
 npm test
+npm run audit:dependencies
 bash scripts/test-ui-linux.sh
 ```
 

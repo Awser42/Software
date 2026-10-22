@@ -64,6 +64,10 @@ async function until(check){
     assert.equal(await fs.readFile(path.join(userData,'chromium-profile','login-sentinel'),'utf8'),'profile must survive');
     await instance.close();instance=null;page=await launch();
     const restored=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(restored.state.items.length,1);assert.equal(restored.state.items[0].productId,'3');assert.deepEqual(restored.state.downloads,[]);assert.equal(restored.settings.output,output);
+    await instance.close();instance=null;await fs.writeFile(path.join(userData,'state.json'),'{"items":');page=await launch();
+    const recovered=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(recovered.state.items[0].productId,'3');assert.deepEqual(recovered.state.downloads,[]);assert.match(recovered.state.message,/recovered from a local backup/);
+    const corrupt=(await fs.readdir(userData)).find(name=>name.startsWith('state.json.corrupt-'));assert(corrupt);assert.equal(await fs.readFile(path.join(userData,corrupt),'utf8'),'{"items":');
+    assert.equal(await fs.readFile(first,'utf8'),'first existing export');assert.equal(await fs.readFile(second,'utf8'),'second existing export');
     console.log('PASS: real desktop record deletion supports Cancel, single-record and all-record confirmation, survives restart, and preserves ZIPs, unrelated files, settings and browser profile.');
   }finally{if(instance)await instance.close();await fs.rm(data,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -34,3 +34,10 @@ test('Downloads clearing during a run keeps active/pending products and later co
   await queue.deleteRecords(null,{downloadsOnly:true});assert.deepEqual(queue.items.map(i=>i.status),['running','pending']);assert.deepEqual(queue.downloads,[]);
   await assert.rejects(queue.deleteRecords(),/Wait for the run/);release();await run;assert.equal(queue.downloads.length,2);
 });
+
+for(const failAt of [1,2])test(`persistence failure at run checkpoint ${failAt} releases the run and leaves unstarted work retryable`,async()=>{
+  let saves=0,extractions=0;
+  const queue=new Queue({initial:{items:[{id:'one',productId:'1',status:'pending',attempts:0,error:null}]},save:async()=>{if(++saves===failAt)throw new Error('Disk full');},extract:async item=>{extractions++;return result(item);}});
+  await assert.rejects(queue.run({}),/Disk full/);assert.equal(queue.running,false);assert.equal(queue.items[0].status,'pending');assert.equal(queue.items[0].attempts,0);assert.equal(extractions,0);
+  await queue.run({});assert.equal(queue.items[0].status,'done');assert.equal(extractions,1);
+});

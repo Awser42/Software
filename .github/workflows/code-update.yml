@@ -42,6 +42,8 @@ jobs:
           "TEST_CHROMIUM=$($chrome.FullName)" >> $env:GITHUB_ENV
       - name: Unit and concurrency tests
         run: npm test
+      - name: Runtime and build dependency security audit
+        run: npm run audit:dependencies
       - name: Responsive UI search pagination and 2000-record rendering check
         run: node test/layout.e2e.js
       - name: Actual desktop 31-product batch and browser controls
@@ -105,14 +107,17 @@ jobs:
         shell: bash
         run: |
           VERSION=$(node -p 'require("./package.json").version')
-          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .peakTabs == 3 and .distinctProductPrices and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
+          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .peakTabs == 3 and .distinctProductPrices and .hoopCombinations == 12 and .distinctHoopPrices and .browserSandbox and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
+          jq -e '.metadata.vulnerabilities.total == 0' evidence/dependency-audit.json
           jq -e '.status == "passed" and .benchmark.nodeReused and .benchmark.imageReused and .benchmark.previewOpen and .benchmark.mutations == 0' evidence/layout-performance.json
           jq -e '.status == "passed" and .noBundledChromium and .externalCache and .installedLaunch and .uninstalled' evidence/lite.json
-          jq -e '.status == "passed" and .nativeWindows and .restartPersistence and .copyExport and .isolatedRetry and .failedRetryReturned and .downloadsClearPreservesFailuresAndExports and .confirmedRemoval' evidence/failed-links.json
+          jq -e '.status == "passed" and .nativeWindows and .restartPersistence and .copyExport and .isolatedRetry and .failedRetryReturned and .downloadsClearPreservesFailuresAndExports and .confirmedRemoval and .outputFailureRecovery' evidence/failed-links.json
           cp evidence/code-update.json download/Windows-update-check.json
           cp evidence/layout-performance.json download/UI-performance-check.json
           cp evidence/lite.json download/Lite-installer-check.json
           cp evidence/failed-links.json download/Failed-links-check.json
+          cp evidence/dependency-audit.json download/Dependency-audit.json
+          cp COMMERCIAL-READINESS.md download/Commercial-readiness.md
           cp evidence/failed-links-desktop.png download/Failed-links-desktop.png
           cp evidence/failed-links-small.png download/Failed-links-small.png
           cp evidence/redesign-1440.png download/UI-desktop-preview.png
@@ -121,11 +126,17 @@ jobs:
           LITE_BYTES=$(jq -r .bytes evidence/lite.json)
           (cd download && sha256sum *-Code-update.zip *-Lite-Setup.exe update-manifest.json > SHA256SUMS.txt)
           cat > notes.md <<TEXT
-          Failed product links now move automatically into their own in-app Failed Links folder, while other products continue processing.
+          Complete observed design/size/hoop prices, safer saved history and commercial-use reliability/security hardening.
 
           Apply through Settings > Check for updates > Download small update > Restart to apply. Confirm version $VERSION in the software header. Do not extract this ZIP over the EXE.
 
           Existing users: use the small code update only. Your installed browser/runtime, archives, login and settings are kept. No new installer is required.
+
+          Incomplete catalog responses no longer limit pricing to one size or hoop per design. The software explores actual enabled page choices, confirms each complete combination and records its own current visible price, options and matching cost-labelled photos. One design with three hoop options has three independent prices; a tested four-design/three-hoop product exports 12 matching rows. A separate three-group regression checks 24 design/physical-size/hoop prices. Already visited combinations are not repeatedly selected. Disabled combinations and unconfirmed amounts are not invented. Stale selected-SKU markers cannot override visible selected options. Bounded discovery warns explicitly if additional combinations remain. Re-add earlier links to capture the new v8 format; existing ZIPs are kept.
+
+          History writes are flushed before atomic replacement and mirrored to a local backup, including record deletions. Corrupt primary history recovers from a valid backup and preserves the damaged bytes; unrecoverable history stops startup with a visible error instead of silently resetting. Disk-write errors no longer leave the run locked or falsely consume an unstarted attempt. Output-folder failures appear as errors and can be corrected and retried. Folder changes are blocked during processing. Chromium requests its sandbox on Windows, and response collection checks real HTTPS AliExpress hostnames with bounded pending JSON captures. Runtime and build npm audits must report zero known vulnerabilities; the build-only proxy dependency was updated without changing the installed runtime dependencies, with actual proxy-forwarding regression coverage.
+
+          Commercial-readiness.md records the audit scope and remaining gates. This is not a claim of complete commercial certification: installer code signing, real-account/live catalog acceptance, site/media usage rights, privacy/support terms and deployment-specific backup/recovery remain release-owner responsibilities. No live first-browser download or checkout-price guarantee is claimed.
 
           Failed Links has a live count, searchable URLs and error reasons, attempt counts, failure time, individual retry/copy/remove, Retry all, Copy all and native text-file export. Previously saved failed records appear automatically after updating. Retrying a link returns it to Progress; success removes it from Failed Links, while another failure returns it with the latest reason and attempt count. Retry is available after the current run finishes. Removal defaults to Cancel and uses stable record IDs. Links persist across restart; Downloads history clearing and clearing completed queue entries leave Failed Links intact. This is an in-app folder; ZIP files are never moved or deleted. Export creates a user-chosen text file with one URL per line.
 
@@ -149,4 +160,4 @@ jobs:
           Windows acceptance: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Full installer for new installations only: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
           TEXT
-          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Automatic Failed Links folder and retry" --notes-file notes.md
+          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Design size and hoop prices with reliability fixes" --notes-file notes.md

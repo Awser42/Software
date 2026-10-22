@@ -6,7 +6,8 @@ const {Browser}=require('./browser');
 const {readArchivePreview,EXPORT_FORMAT}=require('./archive');
 const {UpdateManager,markStartupHealthy}=require('./updater');
 const {installationInfo,launchUninstaller}=require('./installation');
-let win, queue, browser, settings, statePath, tray, updater;
+const {StateStore}=require('./state-store');
+let win, queue, browser, settings, stateStore, tray, updater;
 let quitting=false,uninstalling=false;
 if(!app.requestSingleInstanceLock()) app.quit();
 function showApp(){if(win&&!win.isDestroyed()){if(win.isMinimized())win.restore();win.show();win.focus();}}
@@ -14,8 +15,7 @@ app.on('second-instance',showApp);
 app.on('activate',showApp);
 let writes=Promise.resolve();
 function persist(state) {
-  const text=JSON.stringify({settings,...state});
-  writes=writes.catch(()=>{}).then(async()=>{await fs.writeFile(statePath+'.tmp',text); await fs.rename(statePath+'.tmp',statePath);});
+  writes=stateStore.save({settings,...state});
   return writes;
 }
 let stateTimer,traySignature;
@@ -54,8 +54,8 @@ async function createTray(){
 }
 app.whenReady().then(async()=>{
   await fs.mkdir(app.getPath('userData'),{recursive:true});
-  statePath=path.join(app.getPath('userData'),'state.json');
-  let initial={}; try {initial=JSON.parse(await fs.readFile(statePath,'utf8'));} catch(e) {if(e.code!=='ENOENT') console.error('State could not be read:',e.message);}
+  stateStore=new StateStore(path.join(app.getPath('userData'),'state.json'));
+  const initial=await stateStore.load();
   settings={output:path.join(app.getPath('downloads'),'AliExpress Archives'),skipDuplicates:true,delayMs:2000,settleMs:3000,parallelTabs:3,backgroundBrowser:true,keepRunningInBackground:true,...initial.settings};
   browser=new Browser(app.getPath('userData'), message=>{queue.message=message; send(queue.state());});
   updater=new UpdateManager({appPath:app.getAppPath(),userData:app.getPath('userData'),onProgress:updateState});
@@ -65,6 +65,7 @@ app.whenReady().then(async()=>{
     if(result.preview){const img=nativeImage.createFromDataURL(result.preview);result.preview=img.isEmpty()?null:thumbnail(img);}
     return result;
   }});
+  queue.message=stateStore.warning;
   queue.on('state',send);
   win=new BrowserWindow({width:1280,height:860,minWidth:380,minHeight:500,autoHideMenuBar:true,backgroundColor:'#f6f8f9',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -74,14 +75,14 @@ app.whenReady().then(async()=>{
   await win.loadFile(path.join(__dirname,'index.html'));
   await markStartupHealthy();
   repairSavedPreviews().catch(error=>console.error('Saved previews could not be refreshed:',error.message));
-}).catch(error=>{console.error('Application startup failed:',error);app.quit();});
+}).catch(error=>{console.error('Application startup failed:',error);dialog.showErrorBox('Product Archiver could not start',error.message);app.quit();});
 function handle(name, fn) {ipcMain.handle(name, async(event,...args)=>{
   if(event.sender!==win?.webContents || event.senderFrame!==win.webContents.mainFrame) throw new Error('Untrusted caller');
   return fn(...args);
 });}
 handle('initial',async()=>({settings,state:{...queue.state(),browser:{open:!!browser.context,visible:!!browser.context&&!browser.hidden}},update:updater.info(),installation:await installationInfo()}));
 handle('uninstall',async()=>{if(queue.running)throw new Error('Finish the current run before uninstalling.');if(uninstalling)throw new Error('The uninstaller is already starting.');uninstalling=true;try{const result=await launchUninstaller({beforeLaunch:async()=>{await queue.publish();await writes;await browser.close();}});quitting=true;setTimeout(()=>app.quit(),150);return result;}catch(error){uninstalling=false;throw error;}});
-handle('folder',async()=>{const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory']}); if(!result.canceled) {settings.output=result.filePaths[0]; await queue.publish();} return settings;});
+handle('folder',async()=>{if(queue.running)throw new Error('Finish the current run before changing the output folder.');const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory']});if(queue.running)throw new Error('Finish the current run before changing the output folder.');if(!result.canceled) {settings.output=result.filePaths[0]; await queue.publish();} return settings;});
 handle('settings',async value=>{
   if(queue.running) throw new Error('Pause does not end a run. Change settings after the run finishes.');
   settings.skipDuplicates=!!value.skipDuplicates;
@@ -97,9 +98,10 @@ handle('add',async text=>{
   const results=await queue.add(text.split(/\r?\n/),settings.skipDuplicates);queue.message=`${results.filter(result=>result.status==='pending').length} links added · ${results.filter(result=>result.status==='duplicate').length} duplicates skipped.`;send();return results;
 });
 handle('run',async()=>{
+  queue.error='';send();
   if(!settings.output) throw new Error('Select an output folder.');
   if(settings.backgroundBrowser&&browser.context&&!await browser.hide())throw new Error('Chromium could not be hidden. Try Hide Chromium again before starting.');
-  fs.mkdir(settings.output,{recursive:true}).then(()=>queue.run({...settings})).catch(e=>{queue.message=e.message;send(queue.state());});
+  fs.mkdir(settings.output,{recursive:true}).then(()=>queue.run({...settings})).catch(e=>{queue.error=e.message;send();});
 });
 handle('pause',()=>queue.pause()); handle('resume',()=>queue.resume());
 handle('continue',()=>queue.continue()); handle('retry',()=>queue.retry());

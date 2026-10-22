@@ -7,6 +7,9 @@ const {captureVisiblePrices} = require('./prices');
 const {makeArchive} = require('./archive');
 const {bundledChromium}=require('./browser-path');
 const {chromiumWindowVisibility}=require('./window-visibility');
+function isProductResponse(input){
+  try{const url=new URL(input);return url.protocol==='https:'&&!url.username&&!url.password&&!url.port&&/(^|\.)aliexpress\.(com|us)$/i.test(url.hostname)&&/mtop|pdp|detail|product/i.test(url.pathname+url.search);}catch{return false;}
+}
 
 class Browser {
   constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath,platform=process.platform,windowVisibility=chromiumWindowVisibility} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.platform=platform;this.windowVisibility=windowVisibility;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null;this.opening=null;this.hidden=true;this.activePages=new Map();this.attentionPages=new Map(); }
@@ -79,7 +82,7 @@ class Browser {
     this.opening=(async()=>{
       await this.ensureInstalled();
       const {chromium}=require('playwright');
-      this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US',...(!show?['--start-minimized']:[])],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
+      this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false,chromiumSandbox:this.platform==='win32',viewport:null, acceptDownloads:false,args:['--lang=en-US',...(!show?['--start-minimized']:[])],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
       this.context.on('close', () => {this.windowVisibility.close?.(this.processId);this.processId=null;this.processIdPromise=null;this.context=null;this.page=null;this.hidden=true;this.activePages.clear();this.attentionPages.clear();});
       this.page=this.context.pages()[0] || await this.context.newPage();
       if(!await this.setWindowVisibility(show))throw new Error(`Chromium could not be ${show?'shown':'hidden'}. Try Show Chromium / Login again.`);
@@ -146,10 +149,10 @@ class Browser {
     const responses=[];
     const pending=new Set();
     const handler=response => {
-      if (!/aliexpress\.(com|us)/i.test(response.url()) || !/mtop|pdp|detail|product/i.test(response.url())) return;
+      if (!isProductResponse(response.url())||pending.size>=8||responses.length>=30) return;
       const job=(async () => {
         try {
-          if (!(response.headers()['content-type'] || '').includes('json')) return;
+          const headers=response.headers();if (!(headers['content-type'] || '').includes('json')||Number(headers['content-length'])>=8*1024*1024) return;
           const body=await response.body(); if (body.length < 8*1024*1024 && responses.length<30) responses.push(JSON.parse(body.toString()));
         } catch {}
       })();
@@ -298,4 +301,4 @@ class Browser {
   }
   async close() {if(this.opening)await this.opening.catch(()=>{});if(this.context)await this.context.close();this.windowVisibility.close?.(this.processId);this.processId=null;}
 }
-module.exports={Browser};
+module.exports={Browser,isProductResponse};

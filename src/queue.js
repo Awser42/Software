@@ -4,13 +4,13 @@ const {productKey, normalizedUrl, EXPORT_FORMAT} = require('./archive');
 class Queue extends EventEmitter {
   constructor({extract, save = async () => {}, initial = {}}) {
     super(); this.extract = extract; this.save = save; this.items = initial.items || []; this.downloads = initial.downloads || [];
-    this.running = false; this.paused = false; this.waiting = null; this.message = '';this.manualRequests=new Map();this.verificationEpoch=0;
+    this.running = false; this.paused = false; this.waiting = null; this.message = '';this.error='';this.manualRequests=new Map();this.verificationEpoch=0;
     for (const item of this.items) if (['running','waiting'].includes(item.status)) item.status = 'pending';
   }
-  state() { return {items:this.items, downloads:this.downloads, running:this.running, paused:this.paused, waiting:this.waiting, waitingCount:this.manualRequests.size,activeTabs:this.items.filter(i=>['running','waiting'].includes(i.status)).length,message:this.message}; }
+  state() { return {items:this.items, downloads:this.downloads, running:this.running, paused:this.paused, waiting:this.waiting, waitingCount:this.manualRequests.size,activeTabs:this.items.filter(i=>['running','waiting'].includes(i.status)).length,message:this.message,error:this.error}; }
   async publish() { await this.save({items:this.items, downloads:this.downloads}); this.emit('state', this.state()); }
   async add(urls, skipDuplicates = true) {
-    const results = [];
+    const results = [],addedIds=new Set();
     for (const input of urls) {
       const raw = input.trim(); if (!raw) continue;
       try {
@@ -20,10 +20,10 @@ class Queue extends EventEmitter {
         const queued = this.items.some(i => i.productId === id && ['pending','running','waiting'].includes(i.status));
         if (skipDuplicates && (exists || queued)) { results.push({url, status:'duplicate'}); continue; }
         const item = {id:require('node:crypto').randomUUID(), productId:id, url, status:'pending', attempts:0, error:null};
-        this.items.push(item); results.push(item);
+        this.items.push(item);addedIds.add(item.id);results.push(item);
       } catch (e) { results.push({url:raw, status:'invalid', error:e.message}); }
     }
-    await this.publish(); return results;
+    try{await this.publish();}catch(error){this.items=this.items.filter(item=>!addedIds.has(item.id)||item.status!=='pending');throw error;}return results;
   }
   async checkpoint() { while (this.paused||this.waiting) await new Promise(resolve => setTimeout(resolve, 100)); }
   pause() { this.paused = true; return this.publish(); }
@@ -59,7 +59,8 @@ class Queue extends EventEmitter {
   async retry(ids = null) {
     if(this.running)throw new Error('Wait for the run to finish before retrying failed links.');
     const records=this.failureItems(ids),selected=new Set(records.map(item=>item.id));
-    if(records.some(record=>this.items.some(item=>item.productId===record.productId&&['pending','running','waiting'].includes(item.status))))throw new Error('A selected product is already queued.');
+    const activeProducts=new Set(this.items.filter(item=>['pending','running','waiting'].includes(item.status)).map(item=>item.productId));
+    if(records.some(record=>activeProducts.has(record.productId)))throw new Error('A selected product is already queued.');
     const previous={items:this.items,message:this.message};
     this.items=this.items.map(item=>selected.has(item.id)?{...item,status:'pending',error:null}:item);
     this.message=`${records.length} failed links returned to the queue.`;
@@ -97,13 +98,16 @@ class Queue extends EventEmitter {
   }
   async run(settings) {
     if (this.running) return;
-    this.running = true; await this.publish();
+    this.running = true;
     try {
+      await this.publish();
       const limit=Math.max(1,Math.min(4,Math.floor(Number(settings.parallelTabs)||3),this.items.filter(i=>i.status==='pending').length||1));
       const worker=async()=>{
         while(true){
           await this.checkpoint();const item=this.items.find(i=>i.status==='pending');if(!item)return;
-          item.status='running';item.attempts++;item.error=null;await this.publish();
+          const previous={status:item.status,attempts:item.attempts,error:item.error};
+          item.status='running';item.attempts++;item.error=null;
+          try{await this.publish();}catch(error){Object.assign(item,previous);throw error;}
           try {
             const result=await this.extract(item,settings,this);
             this.downloads.unshift(result);item.status='done';item.title=result.title;item.warnings=result.warnings.length;item.savedAt=new Date().toISOString();

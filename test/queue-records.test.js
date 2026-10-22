@@ -45,3 +45,12 @@ test('failed persistence restores the records instead of reporting a successful 
   await assert.rejects(queue.deleteRecords(),/Disk full/);
   assert.deepEqual(queue.downloads,initial.downloads);assert.deepEqual(queue.items,initial.items);
 });
+
+test('a failed add does not leave invisible links that run after the user retries',async()=>{
+  let fail=true;const queue=new Queue({extract:async()=>{},save:async()=>{if(fail)throw new Error('Disk full');}});
+  await assert.rejects(queue.add(['https://www.aliexpress.com/item/1.html']),/Disk full/);assert.deepEqual(queue.items,[]);fail=false;assert.equal((await queue.add(['https://www.aliexpress.com/item/1.html']))[0].status,'pending');assert.equal(queue.items.length,1);
+});
+test('rolling back a failed add does not discard a concurrent unrelated queue change',async()=>{
+  let rejectSave;const gate=new Promise((resolve,reject)=>{rejectSave=reject;});
+  const queue=new Queue({extract:async()=>{},save:()=>gate});const addition=queue.add(['https://www.aliexpress.com/item/1.html']);queue.items.push({id:'other',productId:'2',status:'pending'});rejectSave(new Error('Disk full'));await assert.rejects(addition,/Disk full/);assert.deepEqual(queue.items.map(item=>item.id),['other']);
+});

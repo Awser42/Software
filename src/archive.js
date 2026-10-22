@@ -50,7 +50,7 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-xlsx-jpeg-v7';
+const EXPORT_FORMAT='product-xlsx-jpeg-v8';
 const filenameCost=value=>money(value).replace(/(?:US\s*\$|\bUSD\b\s*\$?)/gi,'$').replace(/\$\s+(?=\d)/g,'$');
 const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');

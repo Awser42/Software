@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
-let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,failureLimit=50,view='grid',lastLatest=null;
-let updateState={status:'idle',currentVersion:'1.4.6',totalBytes:0,downloadedBytes:0,canRestart:false};
+let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,failureLimit=50,view='grid',lastLatest=null,lastRunError='';
+let updateState={status:'idle',currentVersion:'1.4.7',totalBytes:0,downloadedBytes:0,canRestart:false};
 const downloadCache=new Map(),rowCache=new Map(),failureCache=new Map();
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
@@ -35,7 +35,7 @@ function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.6'}`;$('runningVersion').textContent=u.currentVersion||'1.4.6';
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.7'}`;$('runningVersion').textContent=u.currentVersion||'1.4.7';
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -53,6 +53,7 @@ function renderUpdate(value){
 function render(s){state=s;if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;paint();});}
 function paint(){
   const s=state;if(!s)return;
+  if(s.error)error(new Error(s.error));else if(lastRunError)$('error').hidden=true;lastRunError=s.error||'';
   const done=s.items.filter(i=>i.status==='done').length,failed=s.items.filter(i=>i.status==='failed').length;
   const pending=s.items.filter(i=>['pending','running','waiting'].includes(i.status)).length;
   const percent=s.items.length?Math.round(100*(done+failed)/s.items.length):0;
@@ -70,6 +71,7 @@ function paint(){
   $('activityCount').textContent=(s.items.length-failed)+' products';
   $('pause').disabled=!s.running||s.paused;$('resume').disabled=!s.paused;$('retry').disabled=s.running||!failed;
   $('clear').disabled=s.running;$('run').disabled=s.running;$('saveSettings').disabled=s.running;
+  $('chooseFolder').disabled=s.running;
   $('manageInstallation').disabled=s.running||!installation?.installed;$('clearRecords').disabled=!s.downloads.length;
   $('historyCount').textContent=s.downloads.length+' saved archives';
   $('manual').hidden=!s.waiting;$('manualText').textContent=s.waiting||'';
@@ -131,7 +133,7 @@ function renderFailures(){
 function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.preview?.length]);}
 function downloadCard(d){
   const card=el('article',null,'download-card'),actions=el('div',null,'download-actions'),preview=el('div',null,'preview'),body=el('div',null,'download-body');card.dataset.archivePath=d.path;
-  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v7'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
+  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v8'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
   const remove=command('','trash-2',async()=>{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);},'icon-button danger');
   remove.setAttribute('aria-label','Delete record');remove.dataset.tooltip='Delete record; keep ZIP';actions.append(el('span',badge,'badge'),remove);
   if(d.preview?.startsWith('data:image/')){const image=el('img');image.src=d.preview;image.alt=d.title||'Product image';image.decoding='async';image.loading='lazy';preview.append(image);}else preview.append(icon('image'));

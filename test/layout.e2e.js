@@ -30,7 +30,7 @@ async function settle(page){await page.evaluate(()=>new Promise(resolve=>request
     await page.setViewportSize({width:1440,height:1000});
     const stats=await page.evaluate(async()=>{
       const canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;const ctx=canvas.getContext('2d');ctx.fillStyle='#d5e8dc';ctx.fillRect(0,0,320,240);const preview=canvas.toDataURL('image/jpeg');
-      const downloads=Array.from({length:2000},(_,index)=>({path:`C:/exports/product-${index}.zip`,productId:String(index),title:`Product ${String(index).padStart(4,'0')}`,images:12,rowCount:2,capturedAt:new Date(1700000000000+index*1000).toISOString(),exportFormat:'product-xlsx-jpeg-v7',preview,warnings:[],detailsPreview:[{variation:'Size: S',size:'S',price:'$6.40'},{variation:'Size: L',size:'L',price:'$8.15'}]}));
+      const downloads=Array.from({length:2000},(_,index)=>({path:`C:/exports/product-${index}.zip`,productId:String(index),title:`Product ${String(index).padStart(4,'0')}`,images:12,rowCount:2,capturedAt:new Date(1700000000000+index*1000).toISOString(),exportFormat:'product-xlsx-jpeg-v8',preview,warnings:[],detailsPreview:[{variation:'Size: S',size:'S',price:'$6.40'},{variation:'Size: L',size:'L',price:'$8.15'}]}));
       const state={items:[],downloads,running:false,paused:false};window.previewFixture=state;window.previewState(state);
       return {records:downloads.length};
     });

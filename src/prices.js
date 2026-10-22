@@ -27,9 +27,9 @@ function selectedTarget(state,target) {
   return selected.length===1&&sameValue(selected[0],target);
 }
 function matches(state,targets,skuId) {
-  if (skuId && state.selectedSkuId) return String(state.selectedSkuId)===String(skuId);
   if (!targets?.length || targets.length!==state.groups.length) return false;
-  return targets.every(target=>selectedTarget(state,target));
+  if (skuId && state.selectedSkuId && String(state.selectedSkuId)!==String(skuId)) return false;
+  return targets.every(target=>selectedTarget(state,target))&&new Set(targets.map(target=>findGroup(state,target))).size===state.groups.length;
 }
 // A range is a product-level observation, not a price for one selected SKU.
 const singlePrice=value=>typeof value==='string' && /\d/.test(value) && !/\d\s*(?:-|–|—|~|to)\s*(?:[A-Z]{2,3}\s*)?[$€£¥₹]?\s*\d/i.test(value);
@@ -151,7 +151,13 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
   };
   let plans=product.variations.map(variant=>({variant,targets:targetsFor(variant,product.properties||[])}));
   const rawVariants=product.variations;
-  const uiMapped=plan=>plan.targets?.length===snapshot.groups.length&&plan.targets.every(target=>{const group=findGroup(snapshot,target);return group&&group.values.some(value=>sameValue(value,target));});
+  const mappedKey=plan=>{
+    if(!plan.targets?.length||plan.targets.length!==snapshot.groups.length)return null;
+    const groups=new Set(),targets=[];
+    for(const target of plan.targets){const group=findGroup(snapshot,target),value=group?.values.find(value=>sameValue(value,target));if(!value)return null;groups.add(group);targets.push({groupId:group.id,groupName:group.name,valueId:value.id,valueName:value.name});}
+    return groups.size===snapshot.groups.length?selectionKey(targets):null;
+  };
+  const uiMapped=plan=>mappedKey(plan)!==null;
   const useObservedUI=snapshot.groups.length>0&&!plans.some(uiMapped);
   if(useObservedUI){plans=[];product.variations=[];if(rawVariants.length)product.warnings.push('Catalog options could not be mapped to the visible controls; variations are captured from actual selectable page options instead.');}
   if (!plans.length && snapshot.groups.length===1) {
@@ -169,8 +175,14 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
       product.prices.displayedUnassigned=false;
     }
   }
+  const mappedPlans=new Map();
+  for(const plan of plans){const key=mappedKey(plan);if(key===null)continue;if(!mappedPlans.has(key))mappedPlans.set(key,[]);mappedPlans.get(key).push(plan);}
+  // Catalog responses can expose only one size/pack per design. Use the visible
+  // choice count only to detect incomplete coverage, never to invent SKU rows.
+  const possibleSelections=snapshot.groups.reduce((count,group)=>count*new Set(group.values.map(value=>value.id||normalized(value.name))).size,1);
+  const discover=snapshot.groups.length>0&&mappedPlans.size<possibleSelections;
   try {
-    if (!plans.length && snapshot.groups.length>1 && initial && selectionTargets(initial) && singlePrice(initial.displayed)) {
+    if (discover && initial && selectionTargets(initial) && singlePrice(initial.displayed)) {
       // Walk the graph of real enabled UI choices. A candidate is never an
       // exported variation until its full selected state and price are read.
       const visited=new Set(); const limit=Math.min(200,Math.max(1,Number(maxObservedRows)||200));
@@ -180,16 +192,20 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
         const key=selectionKey(targets); if (visited.has(key)) return false;
         if (visited.size>=limit) { limited=true; return false; }
         visited.add(key);
-        const variant={skuId:state.selectedSkuId||null,name:targets.map(t=>[t.groupName,t.valueName].filter(Boolean).join(': ')).join(' / '),attributes:null,price:null,displayedPrice:null};
-        assignObservation(variant,state); product.variations.push(variant);
+        const existing=mappedPlans.get(key)||[],matching=existing.filter(plan=>matches(state,plan.targets,plan.variant.skuId));
+        let variant=matching.length===1?matching[0].variant:null;
+        if(!existing.length){variant={skuId:state.selectedSkuId||null,name:null,attributes:null,price:null,displayedPrice:null};product.variations.push(variant);}
+        if(variant){assignObservation(variant,state);if(key===selectionKey(selectionTargets(initial)))product.prices.displayedUnassigned=false;}
         return true;
       };
-      record(initial); product.prices.displayedUnassigned=false;
+      record(initial);
       const walk=async state=>{
         const parent=selectionTargets(state); if (!parent||halted||limited) return;
         const choices=state.groups.flatMap(group=>group.values.filter(value=>!value.selected&&!value.disabled).map(value=>({groupId:group.id,groupName:group.name,valueId:value.id,valueName:value.name})));
         for (const choice of choices) {
           if (halted||limited) return;
+          const predicted=parent.map(target=>findGroup(state,target)===findGroup(state,choice)?choice:target);
+          if(visited.has(selectionKey(predicted)))continue;
           if (++transitions>limit*12) { limited=true; return; }
           const current=await readPriceState(page); checkPage(current);
           const group=findGroup(current,choice); const value=group?.values.find(v=>sameValue(v,choice));
