@@ -1,0 +1,112 @@
+name: Small Windows code update
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: small-code-update
+  cancel-in-progress: true
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[code-update]')
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - name: Reuse checksum-verified released runtime without rebuilding Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force test-results/base-runtime | Out-Null
+          $setup = Join-Path $PWD 'test-results/base-runtime/Setup-1.4.3.exe'
+          Invoke-WebRequest 'https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe' -OutFile $setup
+          if ((Get-FileHash $setup -Algorithm SHA256).Hash.ToLower() -ne '8b827235b73e4e15ea1e785a0fc39339a1f5c0aa314db3e17951d699df57c720') { throw 'Released runtime checksum mismatch.' }
+          7z x $setup '-otest-results/base-runtime/setup' -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot extract released Setup.' }
+          $payload = Get-ChildItem test-results/base-runtime/setup -Recurse -Filter 'app-64.7z' | Select-Object -First 1
+          if (!$payload) { throw 'Released runtime payload is missing.' }
+          7z x $payload.FullName '-otest-results/base-runtime/app' -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot extract released app.' }
+          $exe = Join-Path $PWD 'test-results/base-runtime/app/AliExpress Product Archiver.exe'
+          $chrome = Get-ChildItem test-results/base-runtime/app/resources/chromium -Recurse -Filter chrome.exe | Select-Object -First 1
+          if (!(Test-Path $exe) -or !$chrome) { throw 'Existing EXE or Chromium is missing.' }
+          "CODE_UPDATE_BASE_EXE=$exe" >> $env:GITHUB_ENV
+          "TEST_CHROMIUM=$($chrome.FullName)" >> $env:GITHUB_ENV
+      - name: Unit and concurrency tests
+        run: npm test
+      - name: Actual desktop 31-product batch and browser controls
+        run: node test/ui.e2e.js
+      - name: Downloads cancellation deletion and restart persistence
+        run: node test/records.e2e.js
+      - name: Build code only without Electron or Chromium
+        run: npm run build:update
+      - name: Existing Windows EXE small-update and native visibility acceptance
+        run: node test/code-update.e2e.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: small-update-evidence
+          path: |
+            test-results/*.json
+            test-results/*.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-small-update
+          path: |
+            dist/*-Code-update.zip
+            dist/update-manifest.json
+  publish:
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TESTED_SHA: ${{ github.sha }}
+      TESTED_RUN: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-small-update
+          path: download
+      - uses: actions/download-artifact@v4
+        with:
+          name: small-update-evidence
+          path: evidence
+      - name: Publish only the verified code update
+        shell: bash
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .peakTabs == 3 and .distinctProductPrices and .softwareVisible and .loginPreserved' evidence/code-update.json
+          cp evidence/code-update.json download/Windows-update-check.json
+          (cd download && sha256sum *-Code-update.zip update-manifest.json > SHA256SUMS.txt)
+          cat > notes.md <<TEXT
+          Small code-only update for existing 1.4.x Windows copies. No new installer, Electron or Chromium download.
+
+          Apply through Settings > Check for updates > Download small update > Restart to apply. Confirm version $VERSION in the software header. Do not extract this ZIP over the EXE.
+
+          Downloads has a prominent Clear Downloads history button and a visible Delete record button above every photo. Confirmations default to Cancel. ZIP files, queued/running products, settings and browser login are kept; history can be cleared while processing continues.
+
+          Photos now use cost-\$8.15 in their filenames. Every confirmed size gets its own cost-labelled photos and matching Excel references. US/USD amounts use the dollar sign; other observed currencies are not falsely converted. Unconfirmed prices remain absent. Recapture earlier products to get new names; existing ZIPs are untouched.
+
+          Hide Chromium targets only Chromium's own Windows process, fully hides its windows and leaves the software visible. Show Chromium restores the verification tab in the same login session. Hiding the software to its tray is a separate Settings command.
+
+          Three product tabs run concurrently by default, configurable from 1 to 4. Tabs share login but isolate product responses, options and prices. CAPTCHA/login remains manual and pauses processing until Continue.
+
+          Native Windows checks apply this exact ZIP to the existing released 1.4.3 EXE, verify hidden/shown Chromium with the software visible, and extract three products with different size prices and a shared persistent login. Source desktop tests additionally verify 31 Excel workbooks and 372 JPEGs. Fixtures are not a claim about live account prices.
+
+          Verified source: $TESTED_SHA
+          Windows acceptance: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
+          Full installer for new installations only: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
+          TEXT
+          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Small update: Downloads, costs and background tabs" --notes-file notes.md

@@ -4,7 +4,7 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-Download **AliExpress-Product-Archiver-1.4.3-Setup.exe** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
+New installations: download [AliExpress-Product-Archiver-1.4.3-Setup.exe](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe), then apply the **1.4.4 small update** through Settings. Existing users need only the small update, not another installer. Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -35,17 +35,19 @@ Prices and controls are captured before lazy description/specification tabs can 
 
 Description prefers the substantive visible AliExpress AI overview, including its actual disclaimer and text. This is observed page content; the software does not generate a summary. If unavailable, the lower seller description is used. Independent seller content and exposed description images are also captured from the observed DOM, lazy tabs, inline modules, endpoints and frames. If no description is exposed, the cells remain blank and the app displays a warning. Specifications and photos are not converted into invented prose.
 
-Original/CDN image sizes are used when exposed. PNG/WebP/other supported sources are decoded into JPEG; changing a filename alone is not conversion. Existing JPEG bytes are retained when possible. Tiny icons, semantic UI controls, avatars and unrelated sources are filtered. Shared sources are downloaded and decoded once. Variation photos have separate filenames containing the observed options and confirmed price, for example `variation-Color-Blue-Size-20_20cm-price-$8.15-1-001.jpg`. If two sizes share a photo but have different prices, each gets its own named copy; its Excel row points to that copy. A missing confirmed price is omitted from the filename. Common images still share saved files when their contents match. Small genuine pictures below the quality threshold may be omitted. Previews retain original photo proportions. Unavailable originals cannot be recovered; download failures appear as warnings without discarding the other product data.
+Original/CDN image sizes are used when exposed. PNG/WebP/other supported sources are decoded into genuine JPEGs. Tiny icons, semantic UI controls, avatars and unrelated sources are filtered. Shared sources are downloaded and decoded once. Each variation's photos, including common gallery/description photos, have its own observed options and confirmed cost, for example `variation-Color-Blue-Size-20_20cm-cost-$8.15-1-001.jpg`. If two sizes share a photo but have different prices, each gets its own named copy; its Excel row points only to that size's copies. US/USD amounts are written with `$`; other observed currencies are preserved, not falsely converted. Choose USD in your AliExpress session for dollar prices. Missing confirmed costs are omitted, not replaced with hidden catalog prices. Recapture earlier products to get the new naming; old ZIPs are unchanged. Previews retain original photo proportions. Download failures appear as warnings without discarding other product data.
 
 ## Delete records
 
-In Downloads, use **Delete record** for one saved entry or **Delete all records** for the whole history. Confirm the dialog to proceed; Cancel keeps the records. Deleting all records also clears queue entries and pasted link rows. Exported ZIP files, settings and your browser login are preserved. Finish the current run before deleting records; pausing is not enough. Deleted records stay deleted after restarting, and their links can be added again.
+Downloads has a sticky **Clear Downloads history** button and **Delete record** above every product photo. Confirmation defaults to Cancel. Only saved history and finished queue entries are removed. Exported ZIPs, pending/running products, pasted unsent links, settings and browser login are preserved. Downloads history can be cleared while processing continues; future completions appear normally. Deleted records stay deleted after restarting, and their links can be added again.
 
 ## Background work
 
-Chromium runs minimized by default in the same persistent headed session. Use **Show Chromium / Login** and **Hide Chromium**; this keeps your existing login. Login/verification pauses the queue without forcing Chromium forward.
+On Windows, Chromium's own windows are fully hidden by default, not merely minimized. **Hide Chromium** identifies Chromium through CDP and targets only its process; the software stays visible. **Show Chromium / Login** restores the tab needing verification in the same persistent login session. Linux uses the available window-manager minimize behavior. Login/verification pauses processing without forcing Chromium forward.
 
-**Run in background** or Close hides the software to its system tray when enabled in Settings. Reopen it from the tray; choose **Quit** to stop completely. Turn off **Keep working in the tray** for normal close-to-quit behavior. Keep the computer awake while processing.
+**Settings > Hide software to tray** or Close hides the software itself when tray behavior is enabled. This is separate from Hide Chromium. Reopen from the tray; choose **Quit** to stop completely. Turn off **Keep working in the tray** for normal close-to-quit behavior. Keep the computer awake while processing.
+
+Products use **3 concurrent Chromium tabs** by default, configurable from 1 to 4 under **Parallel product tabs**. Tabs share login but keep responses, selections, prices and output isolated per product. Completed tabs close automatically. Pause applies to all workers; Continue resumes outstanding manual verification requests. Lower the tab count if the site challenges the session frequently.
 
 ## Small updates
 
@@ -77,7 +79,9 @@ npm test
 bash scripts/test-ui-linux.sh
 ```
 
-Unit tests exercise extraction, exact visible variation prices, blank/stale prices, real JPEG decoding, size/price image filenames, Excel-only archives, literal/formula safety, history deletion, legacy recapture and update verification/rollback. The real desktop test pastes 15/20/30 links, processes a streaming 30-product batch plus its initial product, and checks all 31 workbooks and 217 JPEG files. Controlled fixtures supply remote content; production extraction, queue and archive code run unchanged. On a Linux graphical desktop, `node test/records.e2e.js` separately checks deletion confirmation/cancellation, restart persistence and preservation of exports, settings and the browser profile.
+Unit tests cover extraction, visible prices, blank/stale prices, JPEG decoding, size/cost filenames, Excel-only archives, concurrency, pause/verification, history deletion and verified updates. The desktop batch checks 31 workbooks and 372 size-cost JPEG files, then clears history during a paused active run and verifies queued processing continues without deleting ZIPs. Controlled fixtures supply remote content; production extraction, queue and archive code run unchanged. `node test/records.e2e.js` separately checks deletion cancellation, restart persistence and preservation of exports, pending products, unsent links, settings and browser profile.
+
+The **Small Windows code update** workflow reuses the checksum-verified released 1.4.3 runtime. It runs source desktop/unit tests and `test/code-update.e2e.js`, applies the exact new code ZIP through the existing EXE updater, then checks native hide/show, a visible software window, three overlapping product tabs with different size prices and persistent shared login. Only the small ZIP, manifest, checksums and acceptance report are published. No new installer is built for this update.
 
 ## Build and test Windows
 

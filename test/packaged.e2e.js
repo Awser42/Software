@@ -49,7 +49,7 @@ function zipContents(file) {
    try{
     const page=await browser.open('about:blank',{show:false});
     const startupUrl=page.url();
-    const states=[];async function recordWindow(expected){const session=await browser.context.newCDPSession(page);try{let result;const start=Date.now();do{result=await session.send('Browser.getWindowForTarget');if(result.bounds.windowState===expected)break;await new Promise(resolve=>setTimeout(resolve,100));}while(Date.now()-start<5000);states.push({hidden:browser.hidden,state:result.bounds.windowState});}finally{await session.detach();}}
+    const states=[];async function recordWindow(){const state=await browser.visibility();states.push({hidden:browser.hidden,nativeHidden:state.hidden});}
     await recordWindow('minimized');await browser.show();await recordWindow('normal');await browser.hide();await recordWindow('minimized');
     const encoded=await page.evaluate(async()=>{
      const canvas=new OffscreenCanvas(320,192);const context=canvas.getContext('2d');
@@ -85,13 +85,13 @@ function zipContents(file) {
      expected:{title:fixture.title,description:fixture.descriptionText,seller:fixture.sellerDescriptionText,features:fixture.features.join('\n'),specs:fixture.specifications.map(spec=>spec.name+': '+spec.value).join('\n')}};
    }finally{await browser.close();}
   });
-  markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,state:'minimized'},{hidden:false,state:'normal'},{hidden:true,state:'minimized'}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v6');
+  markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,nativeHidden:true},{hidden:false,nativeHidden:false},{hidden:true,nativeHidden:true}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v7');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);
   const files=Object.keys(entries).filter(name=>!name.endsWith('/')).sort();
-  assert.equal(files.length,2);const imageFile=files.find(name=>name.startsWith('Images/'));assert.match(imageFile,/variation-.*Size-20_20cm.*-price-\$8\.15-/);assert(files.includes('product.xlsx'));
+  assert.equal(files.length,2);const imageFile=files.find(name=>name.startsWith('Images/'));assert.match(imageFile,/variation-.*Size-20_20cm.*-cost-\$8\.15-/);assert(files.includes('product.xlsx'));
   assert(Object.keys(entries).every(name=>name==='product.xlsx'||name==='Images/'||/^Images\/[^/]+\.jpg$/.test(name)));
   const rows=await workbookTable(entries['product.xlsx']);
   assert.deepEqual(rows,[columns,[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,imageFile]]);

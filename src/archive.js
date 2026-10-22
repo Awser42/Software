@@ -50,7 +50,8 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-xlsx-jpeg-v6';
+const EXPORT_FORMAT='product-xlsx-jpeg-v7';
+const filenameCost=value=>money(value).replace(/(?:US\s*\$|\bUSD\b\s*\$?)/gi,'$').replace(/\$\s+(?=\d)/g,'$');
 const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
 function variantOptions(product,variant) {
@@ -88,13 +89,13 @@ async function nameVariationImages(product,stage,files,checkpoint) {
   for (const [variantIndex,variant] of (product.variations||[]).entries()) {
     const options=variantOptions(product,variant),urls=variantImageUrls(product,variant,options);
     if (!urls.size&&product.images?.[0]) urls.add(product.images[0]);
-    const sources=[...new Set(assets.filter(a=>urls.has(a.url)).map(a=>a.file))];
+    const sources=[...new Set(assets.filter(a=>urls.has(a.url)||a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url)).map(a=>a.file))];
     const optionLimit=Math.max(8,Math.floor(100/Math.max(1,options.length))-1);
     const label=safeName(options.map(o=>safeName([o.name,o.value].filter(Boolean).join('-')).slice(0,optionLimit)).join('-')||variant.name||variant.attributes||variant.skuId);
-    const price=money(product.prices?.mode==='visible-variation'?variant.displayedPrice:variant.price);
+    const price=filenameCost(product.prices?.mode==='visible-variation'?variant.displayedPrice:variant.price);
     for (const [imageIndex,source] of sources.entries()) {
       await checkpoint();
-      const file=`Images/variation-${label}${price?`-price-${safeName(price).slice(0,40)}`:''}-${variantIndex+1}-${String(imageIndex+1).padStart(3,'0')}.jpg`;
+      const file=`Images/variation-${label}${price?`-cost-${safeName(price).slice(0,40)}`:''}-${variantIndex+1}-${String(imageIndex+1).padStart(3,'0')}.jpg`;
       await fsp.copyFile(path.join(stage,source),path.join(stage,file),fs.constants.COPYFILE_EXCL);
       files.push(file);
       if (!replacements.has(source)) replacements.set(source,[]);
@@ -107,6 +108,14 @@ async function nameVariationImages(product,stage,files,checkpoint) {
     files.splice(files.indexOf(source),1);
   }
   product.assets=product.assets.flatMap(asset=>replacements.has(asset.file)?replacements.get(asset.file).map(replacement=>({...asset,...replacement,kind:'variation'})):asset);
+  if(!product.variations?.length){
+    const price=filenameCost(observedProductPrice(product.prices));
+    if(price)for(const [index,source] of [...files].entries()){
+      const file=source.replace(/\.jpg$/,`-cost-${safeName(price).slice(0,40)}.jpg`);
+      await checkpoint();await fsp.rename(path.join(stage,source),path.join(stage,file));files[index]=file;
+      for(const asset of product.assets)if(asset.file===source)asset.file=file;
+    }
+  }
 }
 function productRows(product) {
   const base={Title:product.title||'',Description:product.descriptionText||'','Seller Description':product.sellerDescriptionText||'',Features:lines(product.features),Specifications:lines(product.specifications)};

@@ -24,7 +24,7 @@ async function until(check){
     const initial={settings:{output,skipDuplicates:true,settleMs:4000},items:[{id:'first',productId:'1',url:'https://www.aliexpress.com/item/1.html',status:'done',attempts:1},{id:'second',productId:'2',url:'https://www.aliexpress.com/item/2.html',status:'done',attempts:1}],downloads:[{productId:'1',title:'Small size archive',path:first,images:1,warnings:[],capturedAt:new Date().toISOString(),exportFormat:EXPORT_FORMAT,priceMode:'visible-variation-v1'},{productId:'2',title:'Large size archive',path:second,images:1,warnings:[],capturedAt:new Date().toISOString(),exportFormat:EXPORT_FORMAT,priceMode:'visible-variation-v1'}]};
     await fs.writeFile(path.join(userData,'state.json'),JSON.stringify(initial));
     async function launch(){
-      instance=await electron.launch({args:[path.resolve('.')],env:{...process.env,XDG_CONFIG_HOME:config,XDG_CACHE_HOME:path.join(data,'cache')}});
+      instance=await electron.launch({args:[path.resolve('test/records-harness.js')],env:{...process.env,E2E_DATA:userData,APPDATA:config,XDG_CONFIG_HOME:config,XDG_CACHE_HOME:path.join(data,'cache')}});
       assert.equal(await instance.evaluate(({app})=>app.getPath('userData')),userData);
       const page=await instance.firstWindow();await page.waitForSelector('.link-url');return page;
     }
@@ -57,13 +57,13 @@ async function until(check){
     assert.equal(await page.locator('.link-url').first().inputValue(),'https://www.aliexpress.com/item/4.html');
     await instance.evaluate(()=>{global.recordResponse=1;});await page.locator('#clearRecords').click();
     await until(async()=>await page.locator('.download-card').count()===0);
-    assert.equal(await page.locator('#clearRecords').isDisabled(),true);assert.equal(await page.locator('.link-url').first().inputValue(),'');
+    assert.equal(await page.locator('#clearRecords').isDisabled(),true);assert.equal(await page.locator('.link-url').first().inputValue(),'https://www.aliexpress.com/item/4.html');
     saved=JSON.parse(await fs.readFile(path.join(userData,'state.json'),'utf8'));
-    assert.deepEqual(saved.items,[]);assert.deepEqual(saved.downloads,[]);assert.equal(saved.settings.skipDuplicates,true);assert.equal(saved.settings.settleMs,4000);
+    assert.equal(saved.items.length,1);assert.equal(saved.items[0].productId,'3');assert.equal(saved.items[0].status,'pending');assert.deepEqual(saved.downloads,[]);assert.equal(saved.settings.skipDuplicates,true);assert.equal(saved.settings.settleMs,4000);
     assert.equal(await fs.readFile(second,'utf8'),'second existing export');assert.equal(await fs.readFile(path.join(output,'unrelated.txt'),'utf8'),'unrelated file');
     assert.equal(await fs.readFile(path.join(userData,'chromium-profile','login-sentinel'),'utf8'),'profile must survive');
     await instance.close();instance=null;page=await launch();
-    const restored=await page.evaluate(()=>window.desktop.call('initial'));assert.deepEqual(restored.state.items,[]);assert.deepEqual(restored.state.downloads,[]);assert.equal(restored.settings.output,output);
+    const restored=await page.evaluate(()=>window.desktop.call('initial'));assert.equal(restored.state.items.length,1);assert.equal(restored.state.items[0].productId,'3');assert.deepEqual(restored.state.downloads,[]);assert.equal(restored.settings.output,output);
     console.log('PASS: real desktop record deletion supports Cancel, single-record and all-record confirmation, survives restart, and preserves ZIPs, unrelated files, settings and browser profile.');
   }finally{if(instance)await instance.close();await fs.rm(data,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

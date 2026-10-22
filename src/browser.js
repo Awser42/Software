@@ -6,9 +6,39 @@ const {convertToJpeg} = require('./jpeg');
 const {captureVisiblePrices} = require('./prices');
 const {makeArchive} = require('./archive');
 const {bundledChromium}=require('./browser-path');
+const {chromiumWindowVisibility}=require('./window-visibility');
 
 class Browser {
-  constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null;this.opening=null;this.hidden=true; }
+  constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath,platform=process.platform,windowVisibility=chromiumWindowVisibility} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.platform=platform;this.windowVisibility=windowVisibility;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null;this.opening=null;this.hidden=true;this.activePages=new Map();this.attentionPages=new Map(); }
+  currentPage() {return [...this.attentionPages.values(),...this.activePages.values(),this.page].find(page=>page&&!page.isClosed());}
+  async browserProcessId() {
+    const session=await this.context.browser().newBrowserCDPSession();
+    try {
+      const {processInfo}=await session.send('SystemInfo.getProcessInfo');
+      const id=processInfo.find(info=>info.type==='browser')?.id;
+      if(!Number.isSafeInteger(id)||id===process.pid)throw new Error('Chromium process identity is unavailable.');
+      return id;
+    } finally {await session.detach();}
+  }
+  async visibility() {return this.windowVisibility(await this.browserProcessId(),'inspect');}
+  async newProductPage() {
+    const session=await this.context.browser().newBrowserCDPSession();
+    let resolveTarget;
+    const target=new Promise(resolve=>{resolveTarget=resolve;});
+    const created=this.context.waitForEvent('page',{timeout:60000,predicate:async page=>{
+      const id=await target;if(!id)return false;
+      const pageSession=await this.context.newCDPSession(page);
+      try {return (await pageSession.send('Target.getTargetInfo')).targetInfo.targetId===id;}
+      finally {await pageSession.detach();}
+    }});
+    created.catch(()=>{});
+    try {
+      // Background targets share the logged-in profile without activating tabs.
+      const {targetId}=await session.send('Target.createTarget',{url:'about:blank',background:true});
+      resolveTarget(targetId);return await created;
+    } catch(error){resolveTarget(null);throw error;}
+    finally {await session.detach();}
+  }
   async ensureInstalled() {
     const bundled=await bundledChromium(this.resourcesPath);
     if(bundled){this.browserExecutablePath=bundled;this.notify('Bundled Chromium is ready. No browser download required.');return;}
@@ -41,29 +71,34 @@ class Browser {
       await this.ensureInstalled();
       const {chromium}=require('playwright');
       this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US',...(!show?['--start-minimized']:[])],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
-      this.context.on('close', () => {this.context=null; this.page=null;this.hidden=true;});
+      this.context.on('close', () => {this.context=null; this.page=null;this.hidden=true;this.activePages.clear();this.attentionPages.clear();});
       this.page=this.context.pages()[0] || await this.context.newPage();
-      if(show) await this.setWindowVisibility(true);else await this.setWindowVisibility(false);
+      if(!await this.setWindowVisibility(show))throw new Error(`Chromium could not be ${show?'shown':'hidden'}. Try Show Chromium / Login again.`);
       await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
       return this.page;
     })();
     try {return await this.opening;} finally {this.opening=null;}
   }
   async setWindowVisibility(show) {
-    if(!this.context||!this.page||this.page.isClosed())return false;
+    const page=this.currentPage();if(!this.context||!page)return false;
     let session;
     try {
-      session=await this.context.newCDPSession(this.page);
+      if(this.platform==='win32') {
+        await this.windowVisibility(await this.browserProcessId(),show?'show':'hide');
+        if(show)await page.bringToFront();
+        this.hidden=!show;return true;
+      }
+      session=await this.context.newCDPSession(page);
       const {windowId}=await session.send('Browser.getWindowForTarget');
       await session.send('Browser.setWindowBounds',{windowId,bounds:{windowState:show?'normal':'minimized'}});
-      if(show) await this.page.bringToFront();
+      if(show) await page.bringToFront();
       this.hidden=!show;
       return true;
     } catch(error) {
       // The browser remains usable if a desktop/window manager does not expose
       // minimize controls. Never switch to a separate headless login session.
-      if(show) {await this.page.bringToFront();this.hidden=false;return true;}
-      this.notify(`Chromium could not be minimized automatically: ${error.message}`);
+      if(show&&this.platform!=='win32') {await page.bringToFront();this.hidden=false;return true;}
+      this.notify(`Chromium could not be ${show?'shown':'hidden'} automatically: ${error.message}`);
       return false;
     } finally {await session?.detach().catch(()=>{});}
   }
@@ -71,8 +106,8 @@ class Browser {
     if(this.opening) await this.opening;
     if(!this.context)return this.open();
     if(!this.page||this.page.isClosed())this.page=await this.context.newPage();
-    await this.setWindowVisibility(true);
-    return this.page;
+    if(!await this.setWindowVisibility(true))throw new Error('Chromium could not be shown. Try again.');
+    return this.currentPage();
   }
   async hide() {
     if(this.opening) await this.opening;
@@ -86,7 +121,13 @@ class Browser {
   }
   async extract(item, settings, queue) {
     const background=settings.backgroundBrowser!==false;
-    const page=await this.open(item.url,{show:!background});
+    await this.open('about:blank',{show:!background});
+    const page=await this.newProductPage();this.activePages.set(item.id,page);
+    const manual=async message=>{
+      this.attentionPages.set(item.id,page);
+      try {if(!background)await this.show();await queue.manual(message,item);}
+      finally {this.attentionPages.delete(item.id);}
+    };
     const responses=[];
     const pending=new Set();
     const handler=response => {
@@ -107,11 +148,15 @@ class Browser {
         navError=e;
       }
       await page.waitForTimeout(settings.settleMs || 3000);
+      let verificationEpoch=queue.verificationEpoch;
       for (let attempt=0; attempt<4; attempt++) {
         await queue.checkpoint();
+        if(verificationEpoch!==queue.verificationEpoch){
+          await page.goto(item.url,{waitUntil:'domcontentloaded',timeout:60000});
+          await page.waitForTimeout(settings.settleMs||3000);verificationEpoch=queue.verificationEpoch;
+        }
         if (await this.inspectGate(page)) {
-          if(!background) await this.show();
-          await queue.manual('Click Show Chromium, complete login or CAPTCHA, open the product page there, then click Continue after login.');
+          await manual('Click Show Chromium, complete login or CAPTCHA, then click Continue after login.');
           await page.waitForTimeout(2000); continue;
         }
         const capturePrices=async product=>{
@@ -121,8 +166,7 @@ class Browser {
           onProgress:message=>this.notify(message),
           onGate:async()=>{
             if(await this.inspectGate(page)) {
-              if(!background) await this.show();
-              await queue.manual('Click Show Chromium, complete login or CAPTCHA, then click Continue to read the visible variation prices.');
+              await manual('Click Show Chromium, complete login or CAPTCHA, then click Continue to read the visible variation prices.');
             }
           }
         });
@@ -156,11 +200,11 @@ class Browser {
         const observedId=page.url().match(/\/(?:item|i)\/(\d+)\.html/i)?.[1];
         if(!observedId || observedId!==item.productId) {
           if(attempt===3) throw new Error('The browser is not on the requested product. No archive was created from a different page.');
-          await queue.manual('Open the requested product link in Chromium, then click Continue. The app will not archive a different page.');continue;
+          await manual('Open the requested product link in Chromium, then click Continue. The app will not archive a different page.');continue;
         }
         if (!data.title || (!data.images.length && !data.prices.displayed && !data.prices.structuredOffers && !data.prices.sourceModule)) {
           if (attempt===3) throw new Error('Product content is unavailable. It may be removed, region-restricted, or blocked. No archive was fabricated.'+(navError ? ` Navigation: ${navError.message}` : ''));
-          await queue.manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
+          await manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
         }
         data.productId=item.productId;
         if(topData.variations?.some(variant=>variant.displayedPrice)){
@@ -232,7 +276,7 @@ class Browser {
         return await makeArchive(data,settings.output,this.context.request,()=>queue.checkpoint(),(bytes,mime)=>convertToJpeg(page,bytes,mime));
       }
       throw new Error('Login or verification is still blocking the page. Complete it and retry this link.');
-    } finally {page.off('response',handler);}
+    } finally {page.off('response',handler);this.activePages.delete(item.id);this.attentionPages.delete(item.id);await page.close().catch(()=>{});}
   }
   async close() {if(this.opening)await this.opening.catch(()=>{});if(this.context) await this.context.close();}
 }

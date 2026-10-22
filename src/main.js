@@ -37,7 +37,7 @@ function refreshTray(){
   tray.setContextMenu(Menu.buildFromTemplate([
     {label:'Show software',click:showApp},
     {label:'Show Chromium / Login',click:()=>browser.open(undefined,{show:true}).catch(error=>{queue.message=error.message;send(queue.state());})},
-    {label:'Hide Chromium',click:()=>browser.hide().catch(()=>{})},
+    {label:'Hide Chromium',click:()=>hideBrowser().catch(error=>{queue.message=error.message;send(queue.state());})},
     {type:'separator'},
     {label:queue?.paused?'Resume queue':'Pause queue',enabled:!!queue?.running,click:()=>queue.paused?queue.resume():queue.pause()},
     {label:'Quit',click:()=>app.quit()}
@@ -54,7 +54,7 @@ app.whenReady().then(async()=>{
   await fs.mkdir(app.getPath('userData'),{recursive:true});
   statePath=path.join(app.getPath('userData'),'state.json');
   let initial={}; try {initial=JSON.parse(await fs.readFile(statePath,'utf8'));} catch(e) {if(e.code!=='ENOENT') console.error('State could not be read:',e.message);}
-  settings={output:path.join(app.getPath('downloads'),'AliExpress Archives'),skipDuplicates:true,delayMs:2000,settleMs:3000,backgroundBrowser:true,keepRunningInBackground:true,...initial.settings};
+  settings={output:path.join(app.getPath('downloads'),'AliExpress Archives'),skipDuplicates:true,delayMs:2000,settleMs:3000,parallelTabs:3,backgroundBrowser:true,keepRunningInBackground:true,...initial.settings};
   browser=new Browser(app.getPath('userData'), message=>{queue.message=message; send(queue.state());});
   updater=new UpdateManager({appPath:app.getAppPath(),userData:app.getPath('userData'),onProgress:updateState});
   queue=new Queue({initial,save:persist,extract:async(...args)=>{
@@ -87,6 +87,7 @@ handle('settings',async value=>{
   settings.keepRunningInBackground=value.keepRunningInBackground!==false;
   settings.delayMs=Math.max(500,Math.min(60000,Number(value.delayMs)||2000));
   settings.settleMs=Math.max(1000,Math.min(30000,Number(value.settleMs)||3000));
+  settings.parallelTabs=Math.max(1,Math.min(4,Math.floor(Number(value.parallelTabs)||3)));
   await queue.publish(); return settings;
 });
 handle('add',async text=>{
@@ -95,13 +96,18 @@ handle('add',async text=>{
 });
 handle('run',async()=>{
   if(!settings.output) throw new Error('Select an output folder.');
-  if(settings.backgroundBrowser)await browser.hide();
+  if(settings.backgroundBrowser&&browser.context&&!await browser.hide())throw new Error('Chromium could not be hidden. Try Hide Chromium again before starting.');
   fs.mkdir(settings.output,{recursive:true}).then(()=>queue.run({...settings})).catch(e=>{queue.message=e.message;send(queue.state());});
 });
 handle('pause',()=>queue.pause()); handle('resume',()=>queue.resume());
 handle('continue',()=>queue.continue()); handle('retry',()=>queue.retry());
 handle('browser',async()=>{await browser.open(undefined,{show:true});queue.message='Chromium is open. Sign in or finish verification, then Continue or run your links.';send(queue.state());});
-handle('hide-browser',async()=>{await browser.hide();queue.message='Chromium is hidden. Your session and queue can continue in the background.';send(queue.state());});
+async function hideBrowser(){
+  const hidden=await browser.hide();showApp();
+  if(browser.context&&!hidden)throw new Error('Chromium could not be hidden. Your software is still open. Try again.');
+  queue.message='Chromium is hidden. Your software stays open and processing continues.';send(queue.state());
+}
+handle('hide-browser',hideBrowser);
 handle('hide-app',()=>{if(!tray)throw new Error('The system tray is unavailable. Minimize the software instead.');win.hide();});
 handle('update-check',()=>updater.check());
 handle('update-download',()=>updater.download());
@@ -111,16 +117,17 @@ handle('update-restart',async()=>{
   await writes;await browser.close();app.relaunch({exePath:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});app.quit();
 });
 handle('show',async index=>{const record=queue.downloads[index]; if(!record) throw new Error('Unknown download'); await fs.access(record.path);shell.showItemInFolder(record.path);});
-async function deleteRecords(archivePath = null) {
-  if(queue.running)throw new Error('Wait for the run to finish before deleting records.');
+async function deleteRecords(archivePath = null,{downloadsOnly=false} = {}) {
+  if(queue.running&&!downloadsOnly)throw new Error('Wait for the run to finish before deleting records.');
   const record=archivePath===null?null:queue.downloads.find(d=>d.path===archivePath);
   if(archivePath!==null&&!record)throw new Error('Unknown download');
-  if(!record&&!queue.items.length&&!queue.downloads.length)return false;
-  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Delete records',message:record?'Delete this record?':'Delete all records?',detail:record?`${record.title||record.productId}\n\nThe exported ZIP file will be kept. Your settings and browser login will be kept.`:`Remove ${queue.items.length} queue records and ${queue.downloads.length} download records from this app.\n\nExported ZIP files, settings and browser login will be kept.`,buttons:['Cancel',record?'Delete record':'Delete all records'],defaultId:0,cancelId:0,noLink:true});
+  if(!record&&!(downloadsOnly?queue.downloads.length:queue.items.length+queue.downloads.length))return false;
+  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Delete records',message:record?'Delete this record?':downloadsOnly?'Clear Downloads history?':'Delete all records?',detail:record?`${record.title||record.productId}\n\nThe exported ZIP file will be kept. Your settings and browser login will be kept.`:downloadsOnly?`Remove ${queue.downloads.length} download records and finished queue history.\n\nExported ZIP files, queued/running products, settings and browser login will be kept.`:`Remove ${queue.items.length} queue records and ${queue.downloads.length} download records from this app.\n\nExported ZIP files, settings and browser login will be kept.`,buttons:['Cancel',record?'Delete record':downloadsOnly?'Clear Downloads':'Delete all records'],defaultId:0,cancelId:0,noLink:true});
   if(response!==1)return false;
-  await queue.deleteRecords(archivePath);return true;
+  await queue.deleteRecords(archivePath,{downloadsOnly});return true;
 }
-handle('delete-record',archivePath=>{if(typeof archivePath!=='string')throw new Error('Unknown download');return deleteRecords(archivePath);});
+handle('delete-record',archivePath=>{if(typeof archivePath!=='string')throw new Error('Unknown download');return deleteRecords(archivePath,{downloadsOnly:true});});
+handle('clear-downloads',()=>deleteRecords(null,{downloadsOnly:true}));
 handle('clear-records',()=>deleteRecords());
 handle('clear',async()=>{if(queue.running) throw new Error('Wait for the run to finish.'); queue.items=queue.items.filter(i=>!['done','failed'].includes(i.status));await queue.publish();});
 app.on('window-all-closed',()=>{if(!tray||!settings?.keepRunningInBackground)app.quit();});

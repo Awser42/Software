@@ -12,7 +12,12 @@ class FixtureBrowser extends Browser {
  constructor(dataDir,notify){super(dataDir,notify,{resourcesPath:process.env.E2E_BUNDLED?path.resolve('dist/win-unpacked/resources'):process.resourcesPath});global.fixtureBrowser=this;}
  async ensureInstalled(){if(process.env.E2E_BUNDLED)return super.ensureInstalled();this.browserExecutablePath=process.env.TEST_CHROMIUM||(require('node:fs').existsSync('/usr/bin/chromium')?'/usr/bin/chromium':chromium.executablePath());}
  async open(url,options){
+  if(this.fixtureOpening)await this.fixtureOpening;
   if(this.context)return super.open(url,options);
+  this.fixtureOpening=this.prepareFixture(options);
+  try{return await this.fixtureOpening;}finally{this.fixtureOpening=null;}
+ }
+ async prepareFixture(options){
   await super.open('about:blank',options);
   const context=this.context;
   const imageBytes=await this.page.evaluate(()=>{const colors=['#ad1c28','#136ad7','#259145','#9451bc','#d58d20','#333e51'];return colors.map(color=>{const canvas=document.createElement('canvas');canvas.width=320;canvas.height=192;const ctx=canvas.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,320,192);return canvas.toDataURL('image/webp',1).split(',')[1];});});
@@ -35,7 +40,7 @@ class FixtureBrowser extends Browser {
    return {ok:()=>true,status:()=>200,url:()=>url,headers:()=>({'content-type':endpoint?'text/html':'image/webp'}),body:async()=>body,text:async()=>body.toString('utf8')};
   }};
   this.context=new Proxy(context,{get(target,key){if(key==='request')return request;const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});
-  global.fixturePage=this.page;return this.page;
+  Object.defineProperty(global,'fixturePage',{configurable:true,get:()=>this.currentPage()});return this.page;
  }
 }
 const originalLoad=Module._load;
