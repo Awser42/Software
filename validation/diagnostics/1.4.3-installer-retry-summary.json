@@ -1,0 +1,25 @@
+{
+  "run": 39704726868,
+  "version": "1.4.3",
+  "status": "failed",
+  "stages": [
+    "install actual Setup EXE per user",
+    "verify Windows uninstall registration",
+    "verify installed source and bundled browser bytes",
+    "run installed app export browser and code-update acceptance",
+    "uninstall using the installed app button and actual uninstaller",
+    "verify unregister and preserve user exports"
+  ],
+  "sourceVerified": true,
+  "error": "The expression evaluated to a falsy value:\n\n  assert(!remaining.some(item=>String(item.UninstallString||'').toLowerCase().includes(uninstaller.toLowerCase())))\n",
+  "packagedFailure": {
+    "stage": "exercise bundled Chromium and production archive",
+    "error": {
+      "name": "Error",
+      "message": "electronApplication.evaluate: TimeoutError: page.goto: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.aliexpress.com/item/991234567890.html\", waiting until \"domcontentloaded\"\u001b[22m\n\n    at eval (eval at evaluate (:370:30), <anonymous>:36:16)\n    at async <anonymous>:396:30",
+      "stack": "electronApplication.evaluate: TimeoutError: page.goto: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.aliexpress.com/item/991234567890.html\", waiting until \"domcontentloaded\"\u001b[22m\n\n    at eval (eval at evaluate (:370:30), <anonymous>:36:16)\n    at async <anonymous>:396:30\n    at D:\\a\\Software\\Software\\test\\packaged.e2e.js:43:26"
+    },
+    "processOutput": "",
+    "windowText": "a↗\nPRODUCT\nARCHIVER\nWORKSPACE\n↗\nBulk Links\n◷\nProgress\n0\n↓\nDownloads\n0\n⚙\nSettings\nX\nMade for Excel\nOne workbook per product\n Local workspace\nYour login stays on this device\nYOUR PRODUCT WORKSPACE\nBulk Links\nShow Chromium / Login\nHide Chromium\nRun in background\nFeatures\nExcel-only exports\nVariation names & prices\nJPEG photos\nBulk links\nBackground processing\nCOLLECT. ORGANIZE. EXPORT.\nProducts to spreadsheets.\n\nAdd your product links. Get clear Excel workbooks and original JPEG photos, one product at a time.\n\n01\nSign in once\nYour own Chromium session\n02\nPaste your links\n15, 20, 30 or more products\n03\nOpen in Excel\nEach product saves as it finishes\nIN YOUR QUEUE\n0\nProducts waiting to run\nSAVED PRODUCTS\n0\nExcel workbooks + JPEGs\nNEEDS RETRY\n0\nFailed links can be retried\nYour product links\n\nPaste a column from Excel or add one URL per row.\n\nRun all links →\nRows\n15\n20\n30\nCustom\n+ 10 rows\nClear links\n0 links · 0 ready\nAliExpress product links. Paste one or many cells from Excel into any URL row.\n#\tPRODUCT URL\tSTATUS\t\nRemove\n\n1\t\t\nEmpty\n\t\n×\n\n2\t\t\nEmpty\n\t\n×\n\n3\t\t\nEmpty\n\t\n×\n\n4\t\t\nEmpty\n\t\n×\n\n5\t\t\nEmpty\n\t\n×\n\n6\t\t\nEmpty\n\t\n×\n\n7\t\t\nEmpty\n\t\n×\n\n8\t\t\nEmpty\n\t\n×\n\n9\t\t\nEmpty\n\t\n×\n\n10\t\t\nEmpty\n\t\n×\n\n11\t\t\nEmpty\n\t\n×\n\n12\t\t\nEmpty\n\t\n×\n\n13\t\t\nEmpty\n\t\n×\n\n14\t\t\nEmpty\n\t\n×\n\n15\t\t\nEmpty\n\t\n×\n\n16\t\t\nEmpty\n\t\n×\n\n17\t\t\nEmpty\n\t\n×\n\n18\t\t\nEmpty\n\t\n×\n\n19\t\t\nEmpty\n\t\n×\n\n20\t\t\nEmpty\n\t\n×\n\n21\t\t\nEmpty\n\t\n×\n\n22\t\t\nEmpty\n\t\n×\n\n23\t\t\nEmpty\n\t\n×\n\n24\t\t\nEmpty\n\t\n×\n\n25\t\t\nEmpty\n\t\n×\n\n26\t\t\nEmpty\n\t\n×\n\n27\t\t\nEmpty\n\t\n×\n\n28\t\t\nEmpty\n\t\n×\n\n29\t\t\nEmpty\n\t\n×\n\n30\t\t\nEmpty\n\t\n×\nPaste multiple cells into any row. New rows are added automatically. Press Enter for the next URL.\nPaste many links as text\nOUTPUT FOLDER\nC:\\Users\\runneradmin\\Downloads\\AliExpress Archives\nChoose folder\nEvery product ZIP: product.xlsx + Images/\nExcel only · no CSV files\nX\nA workbook you can actually read\n\nProduct Details: title, description, seller description, features and specifications.\nVariations: variation name, its confirmed price, size, color and image filenames.\n\nMissing information stays blank. Every price belongs to its observed selection.\nEXCEL WORKBOOKS. ORIGINAL PHOTOS.\nYour files and login stay on your computer."
+  }
+}
