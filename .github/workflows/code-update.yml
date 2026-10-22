@@ -44,6 +44,10 @@ jobs:
         run: npm test
       - name: Runtime and build dependency security audit
         run: npm run audit:dependencies
+      - name: Build code only without Electron or Chromium
+        run: npm run build:update
+      - name: Existing Windows EXE small-update and native visibility acceptance
+        run: node test/code-update.e2e.js
       - name: Responsive UI search pagination and 2000-record rendering check
         run: node test/layout.e2e.js
       - name: Actual desktop 31-product batch and browser controls
@@ -52,10 +56,6 @@ jobs:
         run: node test/records.e2e.js
       - name: Failed Links automatic sorting restart copy export and isolated retry
         run: node test/failures.e2e.js
-      - name: Build code only without Electron or Chromium
-        run: npm run build:update
-      - name: Existing Windows EXE small-update and native visibility acceptance
-        run: node test/code-update.e2e.js
       - name: Build smaller Lite Setup without bundled Chromium
         run: npm run build:win:lite
       - name: Install launch and uninstall the actual Lite Setup

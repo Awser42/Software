@@ -47,8 +47,9 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
         const softwareVisible=BrowserWindow.getAllWindows().some(window=>window.isVisible());
         const image=await control.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=320;canvas.height=192;const ctx=canvas.getContext('2d');ctx.fillStyle='#137c53';ctx.fillRect(0,0,320,192);return canvas.toDataURL('image/webp').split(',')[1];});
         const imageBytes=Buffer.from(image,'base64'),context=browser.context;let peak=0;const authenticated=[];
-        const browserSession=await context.browser().newBrowserCDPSession();let sandbox;
-        try{sandbox=!(await browserSession.send('Browser.getBrowserCommandLine')).arguments.includes('--no-sandbox');}finally{await browserSession.detach();}
+        const pid=await browser.browserProcessId(),execFile=process.mainModule.require('node:child_process').execFile;
+        const commandLine=await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',`(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`],{windowsHide:true,timeout:15000},(error,stdout)=>error?reject(error):resolve(stdout.trim())));
+        const sandbox=!!commandLine&&!/(?:^|\s)"?--no-sandbox(?:[=\s"]|$)/i.test(commandLine);
         await context.addCookies([{url:'https://www.aliexpress.com/',name:'fixture-login',value:'preserved',expires:Math.floor(Date.now()/1000)+86400}]);
         context.on('page',()=>{peak=Math.max(peak,context.pages().length-1);});
         await context.route('https://www.aliexpress.com/**',route=>{
