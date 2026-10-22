@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-let settings, state, installation, updateState={status:'idle',currentVersion:'1.4.2',totalBytes:0,downloadedBytes:0,canRestart:false};
+let settings, state, installation, updateState={status:'idle',currentVersion:'1.4.3',totalBytes:0,downloadedBytes:0,canRestart:false};
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
 $('clearLinks').onclick=()=>linkGrid.clear();
@@ -29,7 +29,7 @@ function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.2'}`;
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.3'}`;
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -51,6 +51,7 @@ function render(s){
   $('bar').style.width=`${s.items.length?100*(done+failed)/s.items.length:0}%`;
   $('summary').textContent=`${s.paused?'Paused':s.running?'Running':'Idle'} · ${done} complete · ${failed} failed · ${pending} remaining`;
   $('pause').disabled=!s.running||s.paused;$('resume').disabled=!s.paused;$('retry').disabled=s.running||!failed;$('clear').disabled=s.running;$('run').disabled=s.running;$('saveSettings').disabled=s.running;$('manageInstallation').disabled=s.running||!installation?.installed;renderUpdate();
+  $('clearRecords').disabled=s.running||(!s.items.length&&!s.downloads.length);
   $('manual').hidden=!s.waiting;$('manualText').textContent=s.waiting||'';
   const latest=s.downloads[0];$('latestExport').hidden=!latest;$('latestTitle').textContent=latest?.title||latest?.productId||'';$('latestMessage').textContent=s.running?'This ZIP is saved. The remaining products continue in the same Chromium session.':'Saved locally. All completed ZIPs are available in Downloads.';
   const latestPanel=$('latestDataPreview'),latestOpen=latestPanel.dataset.archivePath===latest?.path&&!!latestPanel.querySelector('details')?.open;latestPanel.replaceChildren();const latestPreview=latest?dataPreview(latest):null;if(latestPreview){latestPreview.open=latestOpen;latestPanel.append(latestPreview);}latestPanel.dataset.archivePath=latest?.path||'';latestPanel.hidden=!latestPreview;
@@ -61,7 +62,18 @@ function render(s){
   const openPreviews=new Set([...$('downloadList').querySelectorAll('.download-card')].filter(card=>card.querySelector('.data-preview')?.open).map(card=>card.dataset.archivePath));
   $('downloadList').replaceChildren();
   if(!s.downloads.length)$('downloadList').append(el('div','Your completed Excel and JPEG product ZIPs will appear here.','empty'));
-  s.downloads.forEach((d,index)=>{const card=el('article',null,'download-card'),preview=el('div',null,'preview');card.dataset.archivePath=d.path;if(d.preview?.startsWith('data:image/')){const img=el('img');img.src=d.preview;img.alt=d.title||'Product image';img.decoding='async';img.loading='lazy';preview.append(img);}else preview.textContent='No image available';const body=el('div',null,'download-body');body.append(el('span',d.exportFormat==='product-xlsx-jpeg-v5'?'Excel + JPEG':d.exportFormat==='product-xlsx-jpeg-v4'?'Earlier Excel + JPEG':d.exportFormat==='product-csv-xlsx-jpeg-v3'?'Earlier Excel + CSV':d.exportFormat==='product-csv-jpeg-v2'?'Full product CSV + JPEG':d.exportFormat==='csv-jpeg-v1'?'CSV + JPEG':'Earlier archive','badge'),el('h3',d.title||d.productId),el('p',`${d.images} ${['csv-jpeg-v1','product-csv-jpeg-v2','product-csv-xlsx-jpeg-v3','product-xlsx-jpeg-v4','product-xlsx-jpeg-v5'].includes(d.exportFormat)?'JPEG images':'images'} · ${(d.warnings||[]).length} warnings · ${new Date(d.capturedAt).toLocaleString()}`),el('p',d.path));const previewData=dataPreview(d);if(previewData){previewData.open=openPreviews.has(d.path);body.append(previewData);}const button=el('button','Show ZIP in folder','secondary');button.onclick=()=>call('show',index).catch(error);body.append(button);if(d.warnings?.length){const details=el('details');details.append(el('summary','View warnings'));for(const w of d.warnings)details.append(el('p',w));body.append(details);}card.append(preview,body);$('downloadList').append(card);});
+  s.downloads.forEach((d,index)=>{
+    const card=el('article',null,'download-card'),preview=el('div',null,'preview');card.dataset.archivePath=d.path;
+    if(d.preview?.startsWith('data:image/')){const img=el('img');img.src=d.preview;img.alt=d.title||'Product image';img.decoding='async';img.loading='lazy';preview.append(img);}else preview.textContent='No image available';
+    const body=el('div',null,'download-body');
+    body.append(el('span',d.exportFormat==='product-xlsx-jpeg-v6'?'Excel + JPEG':['product-xlsx-jpeg-v4','product-xlsx-jpeg-v5'].includes(d.exportFormat)?'Earlier Excel + JPEG':d.exportFormat==='product-csv-xlsx-jpeg-v3'?'Earlier Excel + CSV':d.exportFormat==='product-csv-jpeg-v2'?'Full product CSV + JPEG':d.exportFormat==='csv-jpeg-v1'?'CSV + JPEG':'Earlier archive','badge'),el('h3',d.title||d.productId),el('p',`${d.images} ${['csv-jpeg-v1','product-csv-jpeg-v2','product-csv-xlsx-jpeg-v3','product-xlsx-jpeg-v4','product-xlsx-jpeg-v5','product-xlsx-jpeg-v6'].includes(d.exportFormat)?'JPEG images':'images'} · ${(d.warnings||[]).length} warnings · ${new Date(d.capturedAt).toLocaleString()}`),el('p',d.path));
+    const previewData=dataPreview(d);if(previewData){previewData.open=openPreviews.has(d.path);body.append(previewData);}
+    const button=el('button','Show ZIP in folder','secondary');button.onclick=()=>call('show',index).catch(error);
+    const remove=el('button','Delete record','secondary danger');remove.disabled=s.running;remove.onclick=async()=>{try{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);}catch(e){error(e);}};
+    body.append(button,remove);
+    if(d.warnings?.length){const details=el('details');details.append(el('summary','View warnings'));for(const w of d.warnings)details.append(el('p',w));body.append(details);}
+    card.append(preview,body);$('downloadList').append(card);
+  });
 }
 function applySettings(value){settings=value;$('folderLabel').textContent=value.output;$('skipDuplicates').checked=value.skipDuplicates;$('delay').value=value.delayMs/1000;$('settle').value=value.settleMs/1000;$('backgroundBrowser').checked=value.backgroundBrowser!==false;$('keepRunningInBackground').checked=value.keepRunningInBackground!==false;}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
@@ -72,6 +84,7 @@ $('manageInstallation').onclick=async()=>{const button=$('manageInstallation');b
 $('hideApp').onclick=()=>call('hide-app').catch(error);
 $('chooseFolder').onclick=()=>call('folder').then(applySettings).catch(error);
 $('showLatest').onclick=()=>call('show',0).catch(error);
+$('clearRecords').onclick=async()=>{try{if(await call('clear-records')){linkGrid.clear();$('urls').value='';$('error').hidden=true;}}catch(e){error(e);}};
 $('saveSettings').onclick=()=>call('settings',{skipDuplicates:$('skipDuplicates').checked,backgroundBrowser:$('backgroundBrowser').checked,keepRunningInBackground:$('keepRunningInBackground').checked,delayMs:Number($('delay').value)*1000,settleMs:Number($('settle').value)*1000}).then(v=>{applySettings(v);notice('Settings saved.');}).catch(error);
 $('run').onclick=async()=>{const button=$('run');button.disabled=true;try{$('error').hidden=true;importTextLinks();const entries=linkGrid.entries();if(entries.length){const results=await call('add',entries.map(entry=>entry.value).join('\n'));linkGrid.markResults(entries,results);const invalid=results.filter(result=>result.status==='invalid');if(invalid.length)error(new Error(invalid.map(result=>`${result.url}: ${result.error}`).join('\n')));notice(`${results.filter(result=>result.status==='pending').length} links added · ${results.filter(result=>result.status==='duplicate').length} duplicates skipped.`);}if(!state.items.some(item=>item.status==='pending'))return;tab('progress');await call('run');}catch(e){error(e);}finally{button.disabled=!!state?.running;}};
 for(const name of ['pause','resume','continue','clear'])$(name).onclick=()=>call(name).catch(error);

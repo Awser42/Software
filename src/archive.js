@@ -50,7 +50,7 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-xlsx-jpeg-v5';
+const EXPORT_FORMAT='product-xlsx-jpeg-v6';
 const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
 function variantOptions(product,variant) {
@@ -64,9 +64,7 @@ function variantOptions(product,variant) {
   }
   return options;
 }
-function rowImages(product,variant,options) {
-  const assets=(product.assets||[]).filter(a=>a.status==='downloaded');
-  if (!variant) return [...new Set(assets.map(a=>a.file))].join('\n');
+function variantImageUrls(product,variant,options) {
   const urls=new Set(variant.observedImageUrls||[]);
   for (const option of options) {
     if (option.image) urls.add(option.image);
@@ -74,9 +72,41 @@ function rowImages(product,variant,options) {
       for (const v of p.values||[]) if ((option.id&&String(v.id)===String(option.id)) || v.name===option.value) if (v.image) urls.add(v.image);
     }
   }
-  const matched=assets.filter(a=>urls.has(a.url));
-  const common=assets.filter(a=>a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url));
+  return urls;
+}
+function rowImages(product,variant,options) {
+  const assets=(product.assets||[]).filter(a=>a.status==='downloaded');
+  if (!variant) return [...new Set(assets.map(a=>a.file))].join('\n');
+  const variantIndex=(product.variations||[]).indexOf(variant);
+  const urls=variantImageUrls(product,variant,options);
+  const matched=assets.filter(a=>a.variantIndex===variantIndex||(a.variantIndex==null&&urls.has(a.url)));
+  const common=assets.filter(a=>a.variantIndex==null&&(a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url)));
   return [...new Set([...matched,...common].map(a=>a.file))].join('\n');
+}
+async function nameVariationImages(product,stage,files,checkpoint) {
+  const assets=product.assets.filter(a=>a.status==='downloaded'),replacements=new Map();
+  for (const [variantIndex,variant] of (product.variations||[]).entries()) {
+    const options=variantOptions(product,variant),urls=variantImageUrls(product,variant,options);
+    if (!urls.size&&product.images?.[0]) urls.add(product.images[0]);
+    const sources=[...new Set(assets.filter(a=>urls.has(a.url)).map(a=>a.file))];
+    const optionLimit=Math.max(8,Math.floor(100/Math.max(1,options.length))-1);
+    const label=safeName(options.map(o=>safeName([o.name,o.value].filter(Boolean).join('-')).slice(0,optionLimit)).join('-')||variant.name||variant.attributes||variant.skuId);
+    const price=money(product.prices?.mode==='visible-variation'?variant.displayedPrice:variant.price);
+    for (const [imageIndex,source] of sources.entries()) {
+      await checkpoint();
+      const file=`Images/variation-${label}${price?`-price-${safeName(price).slice(0,40)}`:''}-${variantIndex+1}-${String(imageIndex+1).padStart(3,'0')}.jpg`;
+      await fsp.copyFile(path.join(stage,source),path.join(stage,file),fs.constants.COPYFILE_EXCL);
+      files.push(file);
+      if (!replacements.has(source)) replacements.set(source,[]);
+      replacements.get(source).push({file,variantIndex});
+    }
+  }
+  // A shared photo needs distinct names when observed sizes or prices differ.
+  for (const source of replacements.keys()) {
+    await fsp.rm(path.join(stage,source));
+    files.splice(files.indexOf(source),1);
+  }
+  product.assets=product.assets.flatMap(asset=>replacements.has(asset.file)?replacements.get(asset.file).map(replacement=>({...asset,...replacement,kind:'variation'})):asset);
 }
 function productRows(product) {
   const base={Title:product.title||'',Description:product.descriptionText||'','Seller Description':product.sellerDescriptionText||'',Features:lines(product.features),Specifications:lines(product.specifications)};
@@ -164,6 +194,7 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       const warning = 'Description text was not exposed by the page. The description cells were left blank; image content was not invented as text.';
       if (!product.warnings.includes(warning)) product.warnings.push(warning);
     }
+    await nameVariationImages(product,stage,files,checkpoint);
     const rows=productRows(product);
     await writeSpreadsheet(path.join(stage,'product.xlsx'),product,rows);
     await new Promise((resolve,reject) => {

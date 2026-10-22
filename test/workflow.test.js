@@ -9,7 +9,7 @@ const yauzl=require('yauzl');
 const {chromium}=require('playwright');
 const {extractPage,parseDescription,captureOverview,captureProductDetails}=require('../src/extract');
 const {convertToJpeg}=require('../src/jpeg');
-const {makeArchive,productKey,normalizedUrl}=require('../src/archive');
+const {makeArchive,productKey,normalizedUrl,EXPORT_FORMAT}=require('../src/archive');
 const {columns,points,disclaimer,productTitle,productHtml,frameHtml,imageUrls,sellerDom}=require('./fixtures');
 const {Queue}=require('../src/queue');
 let browser,context,page,tmp,png,webp;
@@ -71,7 +71,7 @@ test('Chromium converts actual PNG and WebP bytes to full-size JPEG with white t
 test('archive contains styled Excel only and original-size JPEG Images; never overwrites',async()=>{
  const p=await extractPage(page);p.productId='123456';const clean=await parseDescription(page,p.descriptionHtml);p.descriptionHtml=clean.html;p.descriptionText=clean.text;
  const request={get:async url=>({ok:()=>true,headers:()=>({'content-type':url.endsWith('.jpg')?'image/jpeg':'image/png'}),body:async()=>productImage(url,url.endsWith('.jpg')?'image/webp':'image/png')})};
- const result=await makeArchive(p,tmp,request,async()=>{},encode);assert.equal(result.images,3);assert.equal(result.exportFormat,'product-xlsx-jpeg-v5');assert(result.preview.startsWith('data:image/jpeg;'));const contents=await zipContents(result.path);const files=Object.keys(contents).filter(n=>!n.endsWith('/'));
+ const result=await makeArchive(p,tmp,request,async()=>{},encode);assert.equal(result.images,3);assert.equal(result.exportFormat,EXPORT_FORMAT);assert(result.preview.startsWith('data:image/jpeg;'));const contents=await zipContents(result.path);const files=Object.keys(contents).filter(n=>!n.endsWith('/'));
  assert.equal(files.length,4);assert(!files.includes('product.csv')); assert(files.includes('product.xlsx'));assert(files.filter(n=>!['product.csv','product.xlsx'].includes(n)).every(n=>/^Images\/.+\.jpg$/.test(n)));assert(files.some(n=>/Blue/i.test(n)),'Variation image filename must identify the observed variation');
  for(const file of files.filter(n=>n.startsWith('Images/'))){assert.equal(contents[file].readUInt16BE(0),0xffd8);const decoded=await decode(contents[file]);assert.equal(decoded.width,320);assert.equal(decoded.height,192);}
  const rows=await workbookTable(contents['product.xlsx']);assert.deepEqual(rows[0],columns);assert.equal(rows.length,2);const [row]=rowObjects(rows);assert.equal(row.Title,'Cotton Shirt / Summer');assert.equal(row.Description,'Real cotton description');assert.equal(row['Seller Description'],'Real cotton description');assert.equal(row.Variation,'Color: Blue / Size: Large');assert.equal(row.Size,'Large');assert.equal(row.Color,'Blue');assert(row.Specifications.includes('Material: Cotton'));assert.equal(row.Images.split('\n').length,3);for(const file of row.Images.split('\n'))assert(contents[file]);assert.match(row.Price,/USD/);assert.match(row.Price,/12\.34/);
@@ -88,6 +88,26 @@ test('Excel leaves a missing SKU price blank rather than copying the displayed p
 test('observed zero price is retained and a shared variation image downloads only once',async()=>{
  const p=await extractPage(page);p.images=['https://ae01.alicdn.com/kf/blue.png'];p.descriptionImages=['https://ae01.alicdn.com/kf/blue.png'];p.properties=[{name:'Color',values:[{name:'Blue',image:'https://ae01.alicdn.com/kf/blue.png'}]}];p.variations=[{skuId:'zero',name:'Color: Blue',price:{currency:'USD',value:0}}];
  let requested=0;const result=await makeArchive(p,tmp,{get:async()=>{requested++;return {ok:()=>true,headers:()=>({'content-type':'image/png'}),body:async()=>productImage('https://ae01.alicdn.com/kf/shared.png')};}},async()=>{},encode);assert.equal(requested,1);assert.equal(result.images,1);const contents=await zipContents(result.path);const names=Object.keys(contents).filter(n=>!n.endsWith('/'));assert(names.some(n=>/^Images\/.*Blue.*\.jpg$/i.test(n)));const rows=await workbookTable(contents['product.xlsx']);assert.equal(rows.length,2);assert.match(rowObjects(rows)[0].Price,/USD/);assert.match(rowObjects(rows)[0].Price,/0/);
+});
+test('shared variation photos get separate size and confirmed-price filenames without downloading again',async()=>{
+ const url='https://ae01.alicdn.com/kf/shared-size.png';
+ const p=await extractPage(page);p.images=[url];p.descriptionImages=[url];p.properties=[{id:'14',name:'Color',values:[{id:'1',name:'Blue',image:url}]}];
+ p.variations=[['20*20cm','$8.15'],['15X15cm','$6.40'],['Small',null],['Free','$0.00']].map(([size,displayedPrice])=>({name:`Color: Blue / Size: ${size}`,observedOptions:[{name:'Color',value:size==='Small'?'Blue '.repeat(40):'Blue',propertyId:'14',id:'1'},{name:'Size',value:size}],observedImageUrls:[url],displayedPrice,price:{currency:'USD',value:'999.99'}}));
+ p.prices={mode:'visible-variation',displayed:'$8.15',displayedUnassigned:false};
+ let requests=0;const result=await makeArchive(p,tmp,{get:async()=>{requests++;return {ok:()=>true,headers:()=>({'content-type':'image/png'}),body:async()=>productImage(url)};}},async()=>{},encode);
+ assert.equal(requests,1);assert.equal(result.images,4);
+ const contents=await zipContents(result.path),rows=rowObjects(await workbookTable(contents['product.xlsx']));
+ assert.equal(rows.length,4);const names=[];
+ for(const row of rows){const files=row.Images.split('\n');assert.equal(files.length,1);const file=files[0];names.push(file);assert(contents[file]);assert(file.includes(`Size-${row.Size.replace('*','_')}`));assert(!file.includes('999.99'));if(row.Price)assert(file.includes(`-price-${row.Price}-`));else assert(!file.includes('-price-'));}
+ assert.equal(new Set(names).size,4);assert.equal(Object.keys(contents).filter(name=>name.endsWith('.jpg')).length,4);
+ for(const name of names)assert.deepEqual(contents[name],contents[names[0]]);
+});
+test('size-only variations use the shared main photo with each size price and safe filenames',async()=>{
+ const url='https://ae01.alicdn.com/kf/size-only.png',p=await extractPage(page);p.images=[url];p.descriptionImages=[];p.properties=[];
+ p.variations=[{name:'Size: S',observedOptions:[{name:'Size',value:'S / small'}],displayedPrice:'US $2.50'},{name:'Size: L',observedOptions:[{name:'Size',value:'L:large'}],displayedPrice:'US $4.75'}];p.prices={mode:'visible-variation',displayedUnassigned:false};
+ const result=await makeArchive(p,tmp,{get:async()=>({ok:()=>true,headers:()=>({'content-type':'image/png'}),body:async()=>productImage(url)})},async()=>{},encode);
+ const contents=await zipContents(result.path),rows=rowObjects(await workbookTable(contents['product.xlsx']));assert.equal(result.images,2);
+ for(const row of rows){assert(row.Images.includes(`-price-${row.Price}-`));assert(/^Images\/[^<>:"/\\|?*\x00-\x1f]+\.jpg$/.test(row.Images));assert(contents[row.Images]);}
 });
 test('option lists without observed SKU combinations do not invent combinations or prices',async()=>{
  const p=await extractPage(page);p.images=[];p.descriptionImages=[];p.variations=[];p.properties=[{name:'Color',values:[{name:'Red'},{name:'Blue'}]},{name:'Size',values:[{name:'S'},{name:'M'}]}];
@@ -109,7 +129,7 @@ test('URL validation, tracking removal and strict host checks',()=>{
 test('queue handles pause/resume, manual verification, retry, duplicates, and persistence',async()=>{
  let attempts=0,saved;const q=new Queue({save:async s=>{saved=JSON.parse(JSON.stringify(s));},extract:async(item,settings,q)=>{
    await q.checkpoint();if(item.productId==='2'&&attempts++===0)throw new Error('Temporary failure');
-   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:'product-xlsx-jpeg-v5',priceMode:'visible-variation-v1'};
+   if(item.productId==='1')await q.manual('Login in Chromium');return {productId:item.productId,title:'Observed',path:path.join(tmp,'existing.zip'),warnings:[],exportFormat:EXPORT_FORMAT,priceMode:'visible-variation-v1'};
  }});
  await fs.writeFile(path.join(tmp,'existing.zip'),'zip');
  const added=await q.add(['https://www.aliexpress.com/item/1.html','https://www.aliexpress.us/item/1.html','https://www.aliexpress.com/item/2.html']);assert.equal(added[1].status,'duplicate');
@@ -135,3 +155,4 @@ test('version 1.3 exports with blank descriptions or UI icons can be captured ag
 test('version 1.4.0 archives can be recaptured as Excel-only without deleting existing exports',async()=>{const file=path.join(tmp,'v14-product.zip');await fs.writeFile(file,'earlier Excel and CSV');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'59',path:file,exportFormat:'product-csv-xlsx-jpeg-v3',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/59.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'earlier Excel and CSV');});
 
 test('version 1.4.1 exports with unconfirmed prices can be recaptured in the corrected variation format',async()=>{const file=path.join(tmp,'v141-product.zip');await fs.writeFile(file,'earlier workbook');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'60',path:file,exportFormat:'product-xlsx-jpeg-v4',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/60.html']))[0].status,'pending');});
+test('exports without size and price image filenames can be recaptured while keeping the earlier ZIP',async()=>{const file=path.join(tmp,'v5-product.zip');await fs.writeFile(file,'earlier images');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'61',path:file,exportFormat:'product-xlsx-jpeg-v5',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/61.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'earlier images');});

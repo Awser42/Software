@@ -4,7 +4,7 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-Download **AliExpress-Product-Archiver-1.4.2-Setup.exe** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
+Download **AliExpress-Product-Archiver-1.4.3-Setup.exe** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -35,7 +35,11 @@ Prices and controls are captured before lazy description/specification tabs can 
 
 Description prefers the substantive visible AliExpress AI overview, including its actual disclaimer and text. This is observed page content; the software does not generate a summary. If unavailable, the lower seller description is used. Independent seller content and exposed description images are also captured from the observed DOM, lazy tabs, inline modules, endpoints and frames. If no description is exposed, the cells remain blank and the app displays a warning. Specifications and photos are not converted into invented prose.
 
-Original/CDN image sizes are used when exposed. PNG/WebP/other supported sources are decoded into JPEG; changing a filename alone is not conversion. Existing JPEG bytes are retained when possible. Tiny icons, semantic UI controls, avatars and unrelated sources are filtered; identical image contents share one saved file. Small genuine pictures below the quality threshold may be omitted. Previews retain original photo proportions. Unavailable originals cannot be recovered; download failures appear as warnings without discarding the other product data.
+Original/CDN image sizes are used when exposed. PNG/WebP/other supported sources are decoded into JPEG; changing a filename alone is not conversion. Existing JPEG bytes are retained when possible. Tiny icons, semantic UI controls, avatars and unrelated sources are filtered. Shared sources are downloaded and decoded once. Variation photos have separate filenames containing the observed options and confirmed price, for example `variation-Color-Blue-Size-20_20cm-price-$8.15-1-001.jpg`. If two sizes share a photo but have different prices, each gets its own named copy; its Excel row points to that copy. A missing confirmed price is omitted from the filename. Common images still share saved files when their contents match. Small genuine pictures below the quality threshold may be omitted. Previews retain original photo proportions. Unavailable originals cannot be recovered; download failures appear as warnings without discarding the other product data.
+
+## Delete records
+
+In Downloads, use **Delete record** for one saved entry or **Delete all records** for the whole history. Confirm the dialog to proceed; Cancel keeps the records. Deleting all records also clears queue entries and pasted link rows. Exported ZIP files, settings and your browser login are preserved. Finish the current run before deleting records; pausing is not enough. Deleted records stay deleted after restarting, and their links can be added again.
 
 ## Background work
 
@@ -73,7 +77,7 @@ npm test
 bash scripts/test-ui-linux.sh
 ```
 
-Unit tests exercise extraction, exact visible variation prices, blank/stale prices, real JPEG decoding, Excel-only archives, literal/formula safety, legacy recapture and update verification/rollback. The real desktop test pastes 15/20/30 links, processes a streaming 30-product batch plus its initial product, and checks all 31 workbooks and 186 JPEGs. Controlled fixtures supply remote content; production extraction, queue and archive code run unchanged.
+Unit tests exercise extraction, exact visible variation prices, blank/stale prices, real JPEG decoding, size/price image filenames, Excel-only archives, literal/formula safety, history deletion, legacy recapture and update verification/rollback. The real desktop test pastes 15/20/30 links, processes a streaming 30-product batch plus its initial product, and checks all 31 workbooks and 217 JPEG files. Controlled fixtures supply remote content; production extraction, queue and archive code run unchanged. On a Linux graphical desktop, `node test/records.e2e.js` separately checks deletion confirmation/cancellation, restart persistence and preservation of exports, settings and the browser profile.
 
 ## Build and test Windows
 

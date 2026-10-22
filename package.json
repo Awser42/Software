@@ -1,6 +1,6 @@
 {
   "name": "aliexpress-product-archiver",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Desktop product archive tool with manual Chromium sign-in",
   "main": "src/bootstrap.js",
   "private": true,

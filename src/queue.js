@@ -35,6 +35,21 @@ class Queue extends EventEmitter {
   }
   continue() { this.continueManual?.(); }
   async retry() { for (const i of this.items) if (i.status === 'failed') { i.status = 'pending'; i.error = null; } await this.publish(); }
+  async deleteRecords(archivePath = null) {
+    if (this.running) throw new Error('Wait for the run to finish before deleting records.');
+    const record=archivePath===null?null:this.downloads.find(d=>d.path===archivePath);
+    if (archivePath!==null&&!record) throw new Error('Unknown download');
+    const previous={items:this.items,downloads:this.downloads,paused:this.paused,waiting:this.waiting,message:this.message};
+    if (record) {
+      this.downloads=this.downloads.filter(d=>d.path!==archivePath);
+      if (!this.downloads.some(d=>d.productId===record.productId)) this.items=this.items.filter(i=>i.productId!==record.productId||!['done','failed'].includes(i.status));
+      this.message='Record deleted. Exported ZIP file kept.';
+    } else {
+      this.items=[];this.downloads=[];this.paused=false;this.waiting=null;
+      this.message='All records deleted. Exported ZIP files kept.';
+    }
+    try {await this.publish();} catch(error) {Object.assign(this,previous);throw error;}
+  }
   async run(settings) {
     if (this.running) return;
     this.running = true; await this.publish();

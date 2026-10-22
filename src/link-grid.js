@@ -111,6 +111,7 @@
     return {
       importText, entries, markResults,
       syncQueue(items) { queueItems = items || []; refresh(); },
+      resetResults(productId) { for (const row of rows) if (validateUrl(row.value).productId === productId) row.result = null; refresh(); },
       addRows(count = 10) { const index = rows.length; for (let n = 0; n < count; n++) rows.push(blank()); render(); focusRow(index); },
       setRows(count) { const last = rows.reduce((found, row, index) => row.value.trim() ? index : found, -1); const target = Math.max(count, last + 1, 1); while (rows.length < target) rows.push(blank()); rows = rows.slice(0, target); render(); },
       clear() { rows = Array.from({length: initialRows}, blank); render(); focusRow(0); }

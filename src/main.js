@@ -111,6 +111,17 @@ handle('update-restart',async()=>{
   await writes;await browser.close();app.relaunch({exePath:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});app.quit();
 });
 handle('show',async index=>{const record=queue.downloads[index]; if(!record) throw new Error('Unknown download'); await fs.access(record.path);shell.showItemInFolder(record.path);});
+async function deleteRecords(archivePath = null) {
+  if(queue.running)throw new Error('Wait for the run to finish before deleting records.');
+  const record=archivePath===null?null:queue.downloads.find(d=>d.path===archivePath);
+  if(archivePath!==null&&!record)throw new Error('Unknown download');
+  if(!record&&!queue.items.length&&!queue.downloads.length)return false;
+  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Delete records',message:record?'Delete this record?':'Delete all records?',detail:record?`${record.title||record.productId}\n\nThe exported ZIP file will be kept. Your settings and browser login will be kept.`:`Remove ${queue.items.length} queue records and ${queue.downloads.length} download records from this app.\n\nExported ZIP files, settings and browser login will be kept.`,buttons:['Cancel',record?'Delete record':'Delete all records'],defaultId:0,cancelId:0,noLink:true});
+  if(response!==1)return false;
+  await queue.deleteRecords(archivePath);return true;
+}
+handle('delete-record',archivePath=>{if(typeof archivePath!=='string')throw new Error('Unknown download');return deleteRecords(archivePath);});
+handle('clear-records',()=>deleteRecords());
 handle('clear',async()=>{if(queue.running) throw new Error('Wait for the run to finish.'); queue.items=queue.items.filter(i=>!['done','failed'].includes(i.status));await queue.publish();});
 app.on('window-all-closed',()=>{if(!tray||!settings?.keepRunningInBackground)app.quit();});
 app.on('before-quit',()=>{quitting=true;browser?.close().catch(()=>{});});

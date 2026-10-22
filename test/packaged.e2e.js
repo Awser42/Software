@@ -86,15 +86,15 @@ function zipContents(file) {
    }finally{await browser.close();}
   });
   markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,state:'minimized'},{hidden:false,state:'normal'},{hidden:true,state:'minimized'}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v5');
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v6');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);
   const files=Object.keys(entries).filter(name=>!name.endsWith('/')).sort();
-  assert.deepEqual(files,['Images/variation-Size-20_20cm-001.jpg','product.xlsx']);
+  assert.equal(files.length,2);const imageFile=files.find(name=>name.startsWith('Images/'));assert.match(imageFile,/variation-.*Size-20_20cm.*-price-\$8\.15-/);assert(files.includes('product.xlsx'));
   assert(Object.keys(entries).every(name=>name==='product.xlsx'||name==='Images/'||/^Images\/[^/]+\.jpg$/.test(name)));
   const rows=await workbookTable(entries['product.xlsx']);
-  assert.deepEqual(rows,[columns,[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,'Images/variation-Size-20_20cm-001.jpg']]);
+  assert.deepEqual(rows,[columns,[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,imageFile]]);
   const jpeg=entries[files[0]];assert.equal(jpeg.readUInt16BE(0),0xffd8);
   const decoded=await app.evaluate(({nativeImage},base64)=>{
    const image=nativeImage.createFromBuffer(Buffer.from(base64,'base64'));
