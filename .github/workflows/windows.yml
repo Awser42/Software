@@ -72,6 +72,15 @@ jobs:
           path: test-results
           github-token: ${{ github.token }}
           run-id: 39703299290
+      - name: Separate previous distribution results from current acceptance
+        if: steps.previous.outputs.reuse == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force test-results/previous-distribution | Out-Null
+          foreach ($name in @('installer.json', 'packaged-failure.json', 'packaged-failure.png', 'packaged-stages.json', 'packaged-windows.png', 'packaged-small-update.png')) {
+            $file = Join-Path test-results $name
+            if (Test-Path -LiteralPath $file) { Move-Item -LiteralPath $file -Destination test-results/previous-distribution -Force }
+          }
       - name: Download pinned Windows Chromium
         if: steps.previous.outputs.reuse != 'true'
         run: npm run bundle:chromium
