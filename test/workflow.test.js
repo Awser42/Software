@@ -113,6 +113,14 @@ test('option lists without observed SKU combinations do not invent combinations 
  const p=await extractPage(page);p.images=[];p.descriptionImages=[];p.variations=[];p.properties=[{name:'Color',values:[{name:'Red'},{name:'Blue'}]},{name:'Size',values:[{name:'S'},{name:'M'}]}];
  const result=await makeArchive(p,tmp,{get:async()=>{throw new Error('Unexpected image request');}},async()=>{},encode);const rows=rowObjects(await archiveTable(result.path));assert(rows.length);for(const row of rows){assert(!(row.Variation.includes('Color:')&&row.Variation.includes('Size:')),'No unobserved Cartesian combination');if(row.Variation)assert.equal(row.Price,'');}assert(rows.some(r=>r.Price.includes('12.34')),'Observed product-level display price should be retained');
 });
+test('non-variation image costs normalize confirmed USD but never relabel a different currency',async()=>{
+ const url='https://ae01.alicdn.com/kf/currency.png';
+ for(const [displayed,expected] of [['USD 3.25','$3.25'],['US $4.50','$4.50'],['EUR 5.75','EUR 5.75']]){
+  const product=await extractPage(page);product.variations=[];product.properties=[];product.images=[url];product.descriptionImages=[];product.prices={mode:'visible-variation',displayed};
+  const result=await makeArchive(product,tmp,{get:async()=>({ok:()=>true,headers:()=>({'content-type':'image/png'}),body:async()=>productImage(url)})},async()=>{},encode);
+  const entries=await zipContents(result.path),photos=Object.keys(entries).filter(file=>file.endsWith('.jpg'));assert.equal(photos.length,1);assert(photos[0].includes(`-cost-${expected}.jpg`));
+ }
+});
 test('download failures remain visible in app metadata while Excel still exports',async()=>{
  const p=await extractPage(page);const r=await makeArchive(p,tmp,{get:async()=>{throw new Error('HTTP 403');}},async()=>{},encode);assert.equal(r.images,0);assert.equal(r.warnings.length,3);const contents=await zipContents(r.path);assert(!contents['product.csv']);assert(contents['product.xlsx']);assert(!contents['product.json']);
 });
