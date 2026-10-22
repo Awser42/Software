@@ -1,4 +1,4 @@
-const {app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Tray, Menu} = require('electron');
+const {app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeImage, Tray, Menu} = require('electron');
 const path=require('node:path');
 const fs=require('node:fs/promises');
 const {Queue}=require('./queue');
@@ -103,6 +103,25 @@ handle('run',async()=>{
 });
 handle('pause',()=>queue.pause()); handle('resume',()=>queue.resume());
 handle('continue',()=>queue.continue()); handle('retry',()=>queue.retry());
+handle('retry-failed',ids=>queue.retry(ids));
+handle('copy-failed',ids=>{
+  const records=queue.failureItems(ids);if(!records.length)return 0;
+  clipboard.writeText(records.map(item=>item.url).join('\n'));return records.length;
+});
+handle('export-failed',async ids=>{
+  const records=queue.failureItems(ids);if(!records.length)return false;
+  const result=await dialog.showSaveDialog(win,{title:'Export failed links',defaultPath:path.join(settings.output,'failed-links.txt'),filters:[{name:'Text file',extensions:['txt']}],properties:['showOverwriteConfirmation','createDirectory']});
+  if(result.canceled||!result.filePath)return false;
+  if(path.extname(result.filePath).toLowerCase()!=='.txt')throw new Error('Choose a .txt file for failed links.');
+  await fs.writeFile(result.filePath,records.map(item=>item.url).join('\n')+'\n','utf8');return true;
+});
+handle('delete-failed',async ids=>{
+  const records=queue.failureItems(ids);if(!records.length)return false;
+  const selected=records.map(item=>item.id);
+  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Remove failed links',message:records.length===1?'Remove this failed link?':`Remove ${records.length} failed links?`,detail:'Only the selected failed-link records will be removed. Downloads, exported ZIP files, queued/running products, settings and browser login will be kept.',buttons:['Cancel','Remove failed links'],defaultId:0,cancelId:0,noLink:true});
+  if(response!==1)return false;
+  await queue.removeFailures(selected);return true;
+});
 handle('browser',async()=>{await browser.open(undefined,{show:true});queue.message='Chromium is open. Sign in or finish verification, then Continue or run your links.';send(queue.state());});
 async function hideBrowser(){
   const hidden=await browser.hide();showApp();
@@ -124,13 +143,13 @@ async function deleteRecords(archivePath = null,{downloadsOnly=false} = {}) {
   const record=archivePath===null?null:queue.downloads.find(d=>d.path===archivePath);
   if(archivePath!==null&&!record)throw new Error('Unknown download');
   if(!record&&!(downloadsOnly?queue.downloads.length:queue.items.length+queue.downloads.length))return false;
-  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Delete records',message:record?'Delete this record?':downloadsOnly?'Clear Downloads history?':'Delete all records?',detail:record?`${record.title||record.productId}\n\nThe exported ZIP file will be kept. Your settings and browser login will be kept.`:downloadsOnly?`Remove ${queue.downloads.length} download records and finished queue history.\n\nExported ZIP files, queued/running products, settings and browser login will be kept.`:`Remove ${queue.items.length} queue records and ${queue.downloads.length} download records from this app.\n\nExported ZIP files, settings and browser login will be kept.`,buttons:['Cancel',record?'Delete record':downloadsOnly?'Clear Downloads':'Delete all records'],defaultId:0,cancelId:0,noLink:true});
+  const {response}=await dialog.showMessageBox(win,{type:'warning',title:'Delete records',message:record?'Delete this record?':downloadsOnly?'Clear Downloads history?':'Delete all records?',detail:record?`${record.title||record.productId}\n\nThe exported ZIP file will be kept. Your settings and browser login will be kept.`:downloadsOnly?`Remove ${queue.downloads.length} download records and completed queue history.\n\nFailed Links, exported ZIP files, queued/running products, settings and browser login will be kept.`:`Remove ${queue.items.length} queue records and ${queue.downloads.length} download records from this app.\n\nExported ZIP files, settings and browser login will be kept.`,buttons:['Cancel',record?'Delete record':downloadsOnly?'Clear Downloads':'Delete all records'],defaultId:0,cancelId:0,noLink:true});
   if(response!==1)return false;
   await queue.deleteRecords(archivePath,{downloadsOnly});return true;
 }
 handle('delete-record',archivePath=>{if(typeof archivePath!=='string')throw new Error('Unknown download');return deleteRecords(archivePath,{downloadsOnly:true});});
 handle('clear-downloads',()=>deleteRecords(null,{downloadsOnly:true}));
 handle('clear-records',()=>deleteRecords());
-handle('clear',async()=>{if(queue.running) throw new Error('Wait for the run to finish.'); queue.items=queue.items.filter(i=>!['done','failed'].includes(i.status));await queue.publish();});
+handle('clear',()=>queue.clearFinished());
 app.on('window-all-closed',()=>{if(!tray||!settings?.keepRunningInBackground)app.quit();});
 app.on('before-quit',()=>{quitting=true;browser?.close().catch(()=>{});});

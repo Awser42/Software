@@ -48,6 +48,8 @@ jobs:
         run: node test/ui.e2e.js
       - name: Downloads cancellation deletion and restart persistence
         run: node test/records.e2e.js
+      - name: Failed Links automatic sorting restart copy export and isolated retry
+        run: node test/failures.e2e.js
       - name: Build code only without Electron or Chromium
         run: npm run build:update
       - name: Existing Windows EXE small-update and native visibility acceptance
@@ -106,24 +108,30 @@ jobs:
           jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .peakTabs == 3 and .distinctProductPrices and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
           jq -e '.status == "passed" and .benchmark.nodeReused and .benchmark.imageReused and .benchmark.previewOpen and .benchmark.mutations == 0' evidence/layout-performance.json
           jq -e '.status == "passed" and .noBundledChromium and .externalCache and .installedLaunch and .uninstalled' evidence/lite.json
+          jq -e '.status == "passed" and .nativeWindows and .restartPersistence and .copyExport and .isolatedRetry and .failedRetryReturned and .downloadsClearPreservesFailuresAndExports and .confirmedRemoval' evidence/failed-links.json
           cp evidence/code-update.json download/Windows-update-check.json
           cp evidence/layout-performance.json download/UI-performance-check.json
           cp evidence/lite.json download/Lite-installer-check.json
+          cp evidence/failed-links.json download/Failed-links-check.json
+          cp evidence/failed-links-desktop.png download/Failed-links-desktop.png
+          cp evidence/failed-links-small.png download/Failed-links-small.png
           cp evidence/redesign-1440.png download/UI-desktop-preview.png
           cp evidence/redesign-390.png download/UI-small-window-preview.png
           LITE_PERCENT=$(jq -r .smallerPercent evidence/lite.json)
           LITE_BYTES=$(jq -r .bytes evidence/lite.json)
           (cd download && sha256sum *-Code-update.zip *-Lite-Setup.exe update-manifest.json > SHA256SUMS.txt)
           cat > notes.md <<TEXT
-          Responsive workspace redesign, reduced UI overhead, a reusable Windows browser-window helper and a smaller optional Lite installer.
+          Failed product links now move automatically into their own in-app Failed Links folder, while other products continue processing.
 
           Apply through Settings > Check for updates > Download small update > Restart to apply. Confirm version $VERSION in the software header. Do not extract this ZIP over the EXE.
 
           Existing users: use the small code update only. Your installed browser/runtime, archives, login and settings are kept. No new installer is required.
 
+          Failed Links has a live count, searchable URLs and error reasons, attempt counts, failure time, individual retry/copy/remove, Retry all, Copy all and native text-file export. Previously saved failed records appear automatically after updating. Retrying a link returns it to Progress; success removes it from Failed Links, while another failure returns it with the latest reason and attempt count. Retry is available after the current run finishes. Removal defaults to Cancel and uses stable record IDs. Links persist across restart; Downloads history clearing and clearing completed queue entries leave Failed Links intact. This is an in-app folder; ZIP files are never moved or deleted. Export creates a user-chosen text file with one URL per line.
+
           Optional Lite Setup is $LITE_BYTES bytes, $LITE_PERCENT percent smaller than the released 1.4.3 full installer. It omits bundled Chromium: the pinned browser downloads once on first use and stays in the user profile. This reduces installer size, not the total space required after that browser download. Lite is best for a new installation; existing users should use the small update.
 
-          Bulk Links, Progress, Downloads and Settings now have a compact responsive layout, local Lucide icons, keyboard focus states, icon tooltips and lightweight transitions with reduced-motion support. Downloads adds search, sorting, grid/list modes and incremental loading. Controls fit tested widths from 360 to 1440 pixels; the desktop window can be resized down to 380 pixels.
+          Bulk Links, Progress, Downloads, Failed Links and Settings have a compact responsive layout, local Lucide icons, keyboard focus states, icon tooltips and lightweight transitions with reduced-motion support. Downloads retains search, sorting, grid/list modes and incremental loading. All five panels fit tested widths from 360 to 1440 pixels; the desktop window can be resized down to 380 pixels.
 
           Progress notifications are coalesced. Unchanged cards, photos and open previews are retained; hidden views are not rebuilt. The 2000-record rendering check processes 500 notifications without rebuilding download-card children. Windows hide/show commands reuse one verified native helper process instead of repeatedly starting and compiling PowerShell; browser process identity is checked and helper cleanup is tested. Price-confirmation waits and image quality have not been shortened to manufacture a speed claim.
 
@@ -135,10 +143,10 @@ jobs:
 
           Three product tabs run concurrently by default, configurable from 1 to 4. Tabs share login but isolate product responses, options and prices. CAPTCHA/login remains manual and pauses processing until Continue.
 
-          Native Windows checks apply this exact ZIP to the existing released 1.4.3 EXE, verify hidden/shown Chromium with the software visible, and extract three products with different size prices and a shared persistent login. Source desktop tests additionally verify 31 Excel workbooks and 372 JPEGs, plus clearing history during a paused active run. Actual Lite Setup installation, startup, persistent external browser-cache use and uninstall are also tested. The Lite browser cache is seeded from the checksum-verified existing runtime for acceptance; no live first-download execution is claimed. Fixtures are not a claim about live account prices.
+          Native Windows checks apply this exact ZIP to the existing released 1.4.3 EXE, verify hidden/shown Chromium with the software visible, and extract three products with different size prices and a shared persistent login. Source desktop tests additionally verify 31 Excel workbooks and 372 JPEGs, plus clearing history during a paused active run. Separate real desktop failure-folder checks cover automatic separation, restart persistence, actual clipboard text, export cancellation and file contents, isolated retry, repeated failure, confirmed removal and ZIP preservation. Actual Lite Setup installation, startup, persistent external browser-cache use and uninstall are also tested. The Lite browser cache is seeded from the checksum-verified existing runtime for acceptance; no live first-download execution is claimed. Fixtures are not a claim about live account prices.
 
           Verified source: $TESTED_SHA
           Windows acceptance: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Full installer for new installations only: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
           TEXT
-          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Responsive UI, faster controls and smaller Lite Setup" --notes-file notes.md
+          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Automatic Failed Links folder and retry" --notes-file notes.md

@@ -1,7 +1,7 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const nodes=require('lucide-static/icon-nodes.json');
-const names=['activity','archive','check','chevron-right','circle-alert','circle-check','clipboard-paste','clock-3','download','eraser','eye-off','folder','folder-down','folder-open','globe','image','layers','layout-grid','list','list-plus','list-x','loader-circle','monitor','package-check','panel-bottom-close','pause','play','plus','refresh-cw','rotate-ccw','rotate-cw','search','settings-2','shield-alert','shield-check','sliders-horizontal','trash-2','x'];
+const names=['activity','archive','check','chevron-right','circle-alert','circle-check','clipboard-paste','clock-3','copy','download','eraser','eye-off','folder','folder-down','folder-open','folder-x','globe','image','layers','layout-grid','list','list-plus','list-x','loader-circle','monitor','package-check','panel-bottom-close','pause','play','plus','refresh-cw','rotate-ccw','rotate-cw','search','settings-2','shield-alert','shield-check','sliders-horizontal','trash-2','x'];
 const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
 (async()=>{
   const license=await fs.readFile(path.join(path.dirname(require.resolve('lucide-static/package.json')),'LICENSE'),'utf8');

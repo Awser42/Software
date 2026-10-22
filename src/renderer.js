@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
-let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,view='grid',lastLatest=null;
-let updateState={status:'idle',currentVersion:'1.4.5',totalBytes:0,downloadedBytes:0,canRestart:false};
-const downloadCache=new Map(),rowCache=new Map();
+let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,failureLimit=50,view='grid',lastLatest=null;
+let updateState={status:'idle',currentVersion:'1.4.6',totalBytes:0,downloadedBytes:0,canRestart:false};
+const downloadCache=new Map(),rowCache=new Map(),failureCache=new Map();
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
 $('clearLinks').onclick=()=>linkGrid.clear();
@@ -11,7 +11,7 @@ $('importLinks').onclick=importTextLinks;
 async function call(name,value) {return window.desktop.call(name,value);}
 function error(e){$('error').textContent=e.message||String(e);$('error').hidden=false;}
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;}
-function tab(name){if(!['bulk','progress','downloads','settings'].includes(name))return;activeTab=name;$('workspaceTitle').textContent=({bulk:'Bulk Links',progress:'Progress',downloads:'Downloads',settings:'Settings'})[name];for(const node of document.querySelectorAll('.panel'))node.hidden=node.id!==name;for(const node of document.querySelectorAll('.tab')){node.classList.toggle('active',node.dataset.tab===name);if(node.dataset.tab===name)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');}$('workspaceScroll').scrollTop=0;if(state)paint();}
+function tab(name){if(!['bulk','progress','downloads','failed','settings'].includes(name))return;activeTab=name;$('workspaceTitle').textContent=({bulk:'Bulk Links',progress:'Progress',downloads:'Downloads',failed:'Failed Links',settings:'Settings'})[name];for(const node of document.querySelectorAll('.panel'))node.hidden=node.id!==name;for(const node of document.querySelectorAll('.tab')){node.classList.toggle('active',node.dataset.tab===name);if(node.dataset.tab===name)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');}$('workspaceScroll').scrollTop=0;if(state)paint();}
 function el(tag,text,cls){const node=document.createElement(tag);if(text!=null)node.textContent=text;if(cls)node.className=cls;return node;}
 function icon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS(svg.namespaceURI,'use');svg.classList.add('icon');svg.setAttribute('aria-hidden','true');use.setAttribute('href',`icons.svg#${name}`);svg.append(use);return svg;}
 function command(label,name,action,classes='secondary'){const button=el('button',null,classes);button.append(icon(name),document.createTextNode(label));button.onclick=()=>Promise.resolve().then(action).catch(error);return button;}
@@ -35,7 +35,7 @@ function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.5'}`;$('runningVersion').textContent=u.currentVersion||'1.4.5';
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.6'}`;$('runningVersion').textContent=u.currentVersion||'1.4.6';
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -58,12 +58,16 @@ function paint(){
   const percent=s.items.length?Math.round(100*(done+failed)/s.items.length):0;
   const status=s.paused?'Paused':s.waiting?'Waiting':s.running?'Running':'Idle';
   $('queueCount').textContent=pending;$('downloadCount').textContent=s.downloads.length;
+  $('failedCount').textContent=failed;$('failedCount').classList.toggle('has-failures',failed>0);
+  $('failedSummary').textContent=`${failed} failed links`;
+  $('retryFailures').disabled=s.running||!failed;
+  for(const id of ['copyFailures','exportFailures','clearFailures'])$(id).disabled=!failed;
   $('statQueued').textContent=pending;$('statDone').textContent=s.downloads.length;$('statFailed').textContent=failed;
   $('bar').style.width=percent+'%';$('bar').parentElement.setAttribute('aria-valuenow',String(percent));$('progressPercent').textContent=percent+'%';
   $('runStatus').textContent=status;$('runStatus').dataset.state=status.toLowerCase();$('footerStatus').textContent=status;
   $('summary').textContent=`${status} · ${done} complete · ${failed} failed · ${pending} remaining · ${s.activeTabs||0} active tabs`;
   $('progressCaption').textContent=s.running?`${pending} products remaining in this run.`:s.items.length?`${done} products complete.`:'Your queue is ready.';
-  $('activityCount').textContent=s.items.length+' products';
+  $('activityCount').textContent=(s.items.length-failed)+' products';
   $('pause').disabled=!s.running||s.paused;$('resume').disabled=!s.paused;$('retry').disabled=s.running||!failed;
   $('clear').disabled=s.running;$('run').disabled=s.running;$('saveSettings').disabled=s.running;
   $('manageInstallation').disabled=s.running||!installation?.installed;$('clearRecords').disabled=!s.downloads.length;
@@ -74,6 +78,7 @@ function paint(){
   if(activeTab==='bulk')linkGrid.syncQueue(s.items);
   if(activeTab==='progress')renderItems();
   if(activeTab==='downloads')renderDownloads();
+  if(activeTab==='failed')renderFailures();
 }
 function renderLatest(latest,running){
   $('latestExport').hidden=!latest;$('bulkLatest').hidden=!latest;$('bulkLatestEmpty').hidden=!!latest;
@@ -88,9 +93,9 @@ function renderLatest(latest,running){
   const details=dataPreview(latest);if(details)$('latestDataPreview').append(details);
 }
 function renderItems(){
-  const nodes=[],ids=new Set(state.items.map(item=>item.id));
+  const records=state.items.filter(item=>item.status!=='failed'),nodes=[],ids=new Set(records.map(item=>item.id));
   for(const id of rowCache.keys())if(!ids.has(id))rowCache.delete(id);
-  for(const [index,item] of state.items.slice(0,itemLimit).entries()){
+  for(const [index,item] of records.slice(0,itemLimit).entries()){
     const signature=JSON.stringify([item.status,item.title,item.url,item.error,item.attempts,item.warnings]);let cached=rowCache.get(item.id);
     if(!cached||cached.signature!==signature){
       const row=el('div',null,'row'),leading=el('div',null,'row-leading'),content=el('div',null,'row-content');row.dataset.state=item.status;leading.dataset.state=item.status;
@@ -101,7 +106,27 @@ function renderItems(){
     nodes.push(cached.node);
   }
   if(!nodes.length)nodes.push(empty('No products in this queue.','list-plus'));
-  reconcile($('items'),nodes);$('moreItems').hidden=state.items.length<=itemLimit;
+  reconcile($('items'),nodes);$('moreItems').hidden=records.length<=itemLimit;
+}
+async function retryFailures(ids=null){const retried=await call('retry-failed',ids);if(retried?.length){tab('progress');await call('run');}}
+async function copyFailures(ids=null){const count=await call('copy-failed',ids);if(count)notice(`${count} failed links copied.`);}
+function failureRow(item){
+  const row=el('article',null,'failure-row'),leading=el('div',null,'row-leading'),content=el('div',null,'failure-content'),actions=el('div',null,'failure-actions');row.dataset.failureId=item.id;leading.dataset.state='failed';leading.append(icon('circle-alert'));
+  content.append(el('h2',item.title||`Product ${item.productId}`),el('p',item.url,'failure-url'),el('p',item.error||'Extraction failed.','failure-error'));
+  const date=Date.parse(item.failedAt);content.append(el('small',`Attempt ${item.attempts||0}${Number.isNaN(date)?'':` · ${new Date(date).toLocaleString()}`}`));
+  const retry=command('','rotate-ccw',()=>retryFailures([item.id]),'icon-button secondary');retry.disabled=state.running;
+  const copy=command('','copy',()=>copyFailures([item.id]),'icon-button secondary');
+  const remove=command('','trash-2',()=>call('delete-failed',[item.id]),'icon-button secondary danger');
+  for(const [button,label] of [[retry,'Retry link'],[copy,'Copy link'],[remove,'Remove failed link']]){button.setAttribute('aria-label',label);button.dataset.tooltip=button===retry&&state.running?'Retry after the current run finishes':label;actions.append(button);}
+  row.append(leading,content,actions);return row;
+}
+function renderFailures(){
+  const query=$('failedSearch').value.trim().toLocaleLowerCase(),all=state.items.filter(item=>item.status==='failed');
+  const records=all.filter(item=>!query||[item.title,item.productId,item.url,item.error].some(value=>String(value||'').toLocaleLowerCase().includes(query))).reverse();
+  const ids=new Set(all.map(item=>item.id));for(const id of failureCache.keys())if(!ids.has(id))failureCache.delete(id);
+  const visible=records.slice(0,failureLimit),nodes=visible.map(item=>{const signature=JSON.stringify([item.title,item.url,item.productId,item.error,item.attempts,item.failedAt,state.running]);let cached=failureCache.get(item.id);if(!cached||cached.signature!==signature){cached={signature,node:failureRow(item)};failureCache.set(item.id,cached);}return cached.node;});
+  if(!nodes.length)nodes.push(empty(query?'No matching failed links.':'No failed links.',query?'search':'folder-x'));
+  reconcile($('failedList'),nodes);$('moreFailures').hidden=records.length<=failureLimit;$('failedResults').textContent=records.length?`${visible.length} of ${records.length} links`:'';
 }
 function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.preview?.length]);}
 function downloadCard(d){
@@ -136,6 +161,12 @@ document.querySelector('.brand').onclick=event=>{event.preventDefault();tab('bul
 $('importToggle').onclick=()=>{$('bulkPaste').open=!$('bulkPaste').open;if($('bulkPaste').open)$('urls').focus();};
 $('moreItems').onclick=()=>{itemLimit+=150;renderItems();};
 $('moreDownloads').onclick=()=>{downloadLimit+=24;renderDownloads();};
+$('moreFailures').onclick=()=>{failureLimit+=50;renderFailures();};
+$('failedSearch').oninput=()=>{failureLimit=50;renderFailures();};
+$('retryFailures').onclick=()=>retryFailures().catch(error);
+$('copyFailures').onclick=()=>copyFailures().catch(error);
+$('exportFailures').onclick=()=>call('export-failed').then(saved=>{if(saved)notice('Failed links exported.');}).catch(error);
+$('clearFailures').onclick=()=>call('delete-failed').catch(error);
 for(const id of ['downloadSearch','downloadSort'])$(id).addEventListener(id==='downloadSearch'?'input':'change',()=>{downloadLimit=24;renderDownloads();});
 for(const [id,value] of [['gridView','grid'],['listView','list']])$(id).onclick=()=>{view=value;$('downloadList').classList.toggle('list-mode',view==='list');for(const [button,mode] of [['gridView','grid'],['listView','list']]){$(button).classList.toggle('active',view===mode);$(button).setAttribute('aria-pressed',String(view===mode));}};
 const tooltip=$('tooltip');

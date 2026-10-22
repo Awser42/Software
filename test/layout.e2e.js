@@ -15,16 +15,17 @@ async function settle(page){await page.evaluate(()=>new Promise(resolve=>request
   try{
     const page=await browser.newPage();const failures=[];page.on('pageerror',error=>failures.push(error.message));
     await page.emulateMedia({reducedMotion:'reduce'});
-    await page.addInitScript(({settings,version})=>{window.previewCalls=[];window.desktop={call:async(name,value)=>{window.previewCalls.push([name,value]);if(name==='initial')return {settings,state:{items:[],downloads:[],running:false,paused:false},update:{currentVersion:version},installation:{installed:false}};if(name==='settings')return {...settings,...value};},onState:callback=>{window.previewState=callback;},onUpdate:()=>{}};},{settings,version:pkg.version});
+    await page.addInitScript(({settings,version})=>{window.previewCalls=[];const items=[{id:'failed-1',productId:'1',url:'https://www.aliexpress.com/item/1.html?long=fixture-for-responsive-url-wrapping-without-overflow',status:'failed',attempts:2,error:'Product navigation failed: the seller page is unavailable. Retry when the connection is restored.',failedAt:'2026-10-22T12:00:00Z'},{id:'failed-2',productId:'2',url:'https://www.aliexpress.com/item/2.html',status:'failed',attempts:1,error:'Network error'}];window.desktop={call:async(name,value)=>{window.previewCalls.push([name,value]);if(name==='initial')return {settings,state:{items,downloads:[],running:false,paused:false},update:{currentVersion:version},installation:{installed:false}};if(name==='settings')return {...settings,...value};},onState:callback=>{window.previewState=callback;},onUpdate:()=>{}};},{settings,version:pkg.version});
     await page.goto(`http://127.0.0.1:${server.address().port}`);await page.waitForFunction(()=>document.getElementById('folderLabel').textContent.length>0);await fs.mkdir('test-results',{recursive:true});
     for(const [width,height] of [[1440,1000],[1024,820],[768,900],[520,840],[390,844],[360,780]]){
       await page.setViewportSize({width,height});
-      for(const name of ['bulk','progress','downloads','settings']){
+      for(const name of ['bulk','progress','downloads','failed','settings']){
         await page.locator(`[data-tab="${name}"]`).click();await settle(page);
         const overflow=await page.evaluate(()=>({page:document.documentElement.scrollWidth>innerWidth+1,main:document.querySelector('main').scrollWidth>document.querySelector('main').clientWidth+1,buttons:[...document.querySelectorAll('button')].filter(button=>button.getClientRects().length&&button.scrollWidth>button.clientWidth+2).map(button=>button.id||button.textContent)}));
         assert.equal(overflow.page,false,`${width}px ${name} page overflow`);assert.equal(overflow.main,false,`${width}px ${name} main overflow`);assert.deepEqual(overflow.buttons,[],`${width}px ${name} button overflow`);
+        if(name==='failed'){assert.equal(await page.locator('.failure-row').count(),2);await page.screenshot({path:`test-results/failed-layout-${width}.png`});}
       }
-      await page.locator('[data-tab="bulk"]').click();await settle(page);await page.screenshot({path:`test-results/redesign-${width}.png`});audit.viewports.push({width,height,panels:4,overflow:false});
+      await page.locator('[data-tab="bulk"]').click();await settle(page);await page.screenshot({path:`test-results/redesign-${width}.png`});audit.viewports.push({width,height,panels:5,overflow:false});
     }
     await page.setViewportSize({width:1440,height:1000});
     const stats=await page.evaluate(async()=>{
@@ -51,7 +52,7 @@ async function settle(page){await page.evaluate(()=>new Promise(resolve=>request
     await page.locator('#gridView').click();await page.locator('#moreDownloads').click();assert.equal(await page.locator('.download-card').count(),48);
     await page.locator('#hideBrowser').hover();await page.locator('#tooltip').waitFor({state:'visible'});assert.match(await page.locator('#tooltip').textContent(),/Hide Chromium/);
     assert.deepEqual(failures,[]);Object.assign(audit,{status:'passed',history:stats,benchmark,search:true,sort:true,viewModes:true,pagination:true,stableArchiveTarget:true,reducedMotion:true});
-    console.log('PASS: all four panels fit 360-1440px, search/sort/view/pagination work, and 500 progress messages reuse the same cards, photos and open previews across 2,000 records.');
+    console.log('PASS: all five panels fit 360-1440px, search/sort/view/pagination work, and 500 progress messages reuse the same cards, photos and open previews across 2,000 records.');
   }catch(error){audit.error={message:error.message,stack:error.stack};throw error;}
   finally{await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/layout-performance.json',JSON.stringify(audit,null,2)+'\n');await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

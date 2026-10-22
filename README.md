@@ -4,9 +4,9 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-Existing installations: apply the **1.4.5 small update** through Settings. It redesigns the workspace and improves rendering/window-control overhead without downloading the runtime again.
+Existing installations: apply the **1.4.6 small update** through Settings. It adds an automatic Failed Links folder and retains the responsive workspace improvements without downloading the runtime again.
 
-New installations can use the optional **1.4.5 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
+New installations can use the optional **1.4.6 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -43,7 +43,13 @@ Original/CDN image sizes are used when exposed. PNG/WebP/other supported sources
 
 ## Delete records
 
-Downloads has a sticky **Clear Downloads history** button and **Delete record** above every product photo. Confirmation defaults to Cancel. Only saved history and finished queue entries are removed. Exported ZIPs, pending/running products, pasted unsent links, settings and browser login are preserved. Downloads history can be cleared while processing continues; future completions appear normally. Deleted records stay deleted after restarting, and their links can be added again.
+Downloads has a sticky **Clear Downloads history** button and **Delete record** above every product photo. Confirmation defaults to Cancel. Only saved history and completed queue entries are removed. Failed Links, exported ZIPs, pending/running products, pasted unsent links, settings and browser login are preserved. Downloads history can be cleared while processing continues; future completions appear normally. Deleted records stay deleted after restarting, and their links can be added again.
+
+## Failed Links
+
+An extraction failure automatically moves that product into the in-app **Failed Links** folder; other products continue processing. Previously saved failed records appear there too. Search by URL, product or error, see the failure reason/time and attempt count, copy individual/all URLs, or export one URL per line to a chosen `.txt` file. No product ZIPs are moved or deleted.
+
+After the current run finishes, retry one link or all failures. Retried links return to Progress; success leaves the failure folder, while another failure returns with the latest error and attempt count. Failures survive restart and are not removed by Downloads history clearing or clearing completed queue entries. Removing one/all failures requires a Cancel-first confirmation and preserves active products, downloads, settings and login.
 
 ## Background work
 
@@ -87,7 +93,9 @@ Unit tests cover extraction, visible prices, blank/stale prices, JPEG decoding, 
 
 The **Small Windows code update** workflow reuses the checksum-verified released 1.4.3 runtime to test compatibility. It runs source desktop/unit tests and `test/code-update.e2e.js`, applies the exact new code ZIP through the existing EXE updater, then checks native hide/show, one reusable window helper, a visible software window, three overlapping product tabs with different size prices and persistent shared login. It additionally builds the optional smaller Lite Setup and tests actual installation, launch, external pinned browser-cache use and uninstall. The test seeds that cache from the verified release; it does not claim a live first-browser download.
 
-`node test/layout.e2e.js` checks all four screens at 360/390/520/768/1024/1440 pixels, search, sorting, grid/list modes, pagination and stable archive-path actions. With 2,000 fixture records and 500 coalesced progress notifications, it asserts no download-card child rebuilding, retained photo identity and an open preview. Timings are machine-dependent; the report records actual observed milliseconds rather than a fixed percentage performance claim. The source-only UI adds no web framework or external fonts; only 38 selected, licensed Lucide icons are bundled.
+`node test/failures.e2e.js` checks the real desktop failure folder, restart persistence, actual clipboard text, native export cancellation and text contents, isolated retry, repeated failure and confirmed removal with ZIP preservation. Its extraction fixture intentionally supplies failures/successes; real browser/extraction behavior is covered separately by the batch test.
+
+`node test/layout.e2e.js` checks all five screens at 360/390/520/768/1024/1440 pixels, populated failure rows, search, sorting, grid/list modes, pagination and stable archive-path actions. With 2,000 fixture records and 500 coalesced progress notifications, it asserts no download-card child rebuilding, retained photo identity and an open preview. Timings are machine-dependent; the report records actual observed milliseconds rather than a fixed percentage performance claim. The source-only UI adds no web framework or external fonts; only 40 selected, licensed Lucide icons are bundled.
 
 ## Build and test Windows
 
