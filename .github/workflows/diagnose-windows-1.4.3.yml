@@ -16,12 +16,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/Awser42/Software/actions/jobs/119599425334 > /tmp/job.json
-          gh run view 39710179962 --repo Awser42/Software --log-failed > /tmp/failure.log
+          gh api repos/Awser42/Software/actions/jobs/119601400800 > /tmp/job.json
+          gh run view 39710798024 --repo Awser42/Software --log-failed > /tmp/failure.log || true
           node <<'JS'
           const fs=require('node:fs');
           const job=JSON.parse(fs.readFileSync('/tmp/job.json','utf8'));
-          const report={run:39710179962,steps:job.steps.map(step=>({name:step.name,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
+          const report={run:39710798024,status:job.status,steps:job.steps.map(step=>({name:step.name,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
           fs.mkdirSync('validation/diagnostics',{recursive:true});
           fs.writeFileSync('validation/diagnostics/1.4.4-code-update-summary.json',JSON.stringify(report,null,2)+'\n');
           JS
