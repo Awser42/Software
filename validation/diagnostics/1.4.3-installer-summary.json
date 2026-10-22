@@ -1,0 +1,13 @@
+{
+  "run": 39703299290,
+  "version": "1.4.3",
+  "status": "failed",
+  "stages": [
+    "install actual Setup EXE per user",
+    "verify Windows uninstall registration",
+    "verify installed source and bundled browser bytes",
+    "run installed app export browser and code-update acceptance"
+  ],
+  "sourceVerified": true,
+  "error": "C:\\hostedtoolcache\\windows\\node\\24.21.0\\x64\\node.exe exited 1\nPACKAGED_STAGE launch baseline packaged EXE\nPACKAGED_STAGE wait for baseline application window\nPACKAGED_STAGE exercise bundled Chromium and production archive\nelectronApplication.evaluate: TimeoutError: page.goto: Timeout 10000ms exceeded.\nCall log:\n  - navigating to \"https://www.aliexpress.com/item/991234567890.html\", waiting until \"domcontentloaded\"\n\n    at eval (eval at evaluate (:370:30), <anonymous>:36:16)\n    at async <anonymous>:396:30\n    at D:\\a\\Software\\Software\\test\\packaged.e2e.js:43:26 {\n  log: []\n}\n"
+}
