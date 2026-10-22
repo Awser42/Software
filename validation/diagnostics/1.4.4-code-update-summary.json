@@ -1,66 +1,104 @@
 {
   "run": 39710798024,
-  "status": "in_progress",
+  "snapshot": "2026-10-22T02:26:49.553Z",
+  "status": "completed",
+  "started": "2026-10-22T02:20:07Z",
   "steps": [
     {
       "name": "Set up job",
+      "status": "completed",
+      "started": "2026-10-22T02:20:08Z",
       "conclusion": "success"
     },
     {
       "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "started": "2026-10-22T02:20:10Z",
       "conclusion": "success"
     },
     {
       "name": "Run actions/setup-node@v4",
+      "status": "completed",
+      "started": "2026-10-22T02:20:15Z",
       "conclusion": "success"
     },
     {
       "name": "Run npm ci",
+      "status": "completed",
+      "started": "2026-10-22T02:20:21Z",
       "conclusion": "success"
     },
     {
       "name": "Run node node_modules/electron/install.js",
+      "status": "completed",
+      "started": "2026-10-22T02:22:52Z",
       "conclusion": "success"
     },
     {
       "name": "Reuse checksum-verified released runtime without rebuilding Setup",
+      "status": "completed",
+      "started": "2026-10-22T02:22:57Z",
       "conclusion": "success"
     },
     {
       "name": "Unit and concurrency tests",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:23:10Z",
+      "conclusion": "success"
     },
     {
       "name": "Actual desktop 31-product batch and browser controls",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:23:43Z",
+      "conclusion": "success"
     },
     {
       "name": "Downloads cancellation deletion and restart persistence",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:06Z",
+      "conclusion": "success"
     },
     {
       "name": "Build code only without Electron or Chromium",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:09Z",
+      "conclusion": "success"
     },
     {
       "name": "Existing Windows EXE small-update and native visibility acceptance",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:10Z",
+      "conclusion": "success"
     },
     {
       "name": "Run actions/upload-artifact@v4",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:33Z",
+      "conclusion": "success"
     },
     {
       "name": "Run actions/upload-artifact@v4",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:35Z",
+      "conclusion": "success"
     },
     {
       "name": "Post Run actions/setup-node@v4",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:37Z",
+      "conclusion": "success"
     },
     {
       "name": "Post Run actions/checkout@v4",
-      "conclusion": null
+      "status": "completed",
+      "started": "2026-10-22T02:26:40Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "started": "2026-10-22T02:26:42Z",
+      "conclusion": "success"
     }
   ],
   "failure": ""
