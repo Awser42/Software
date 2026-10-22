@@ -1,0 +1,147 @@
+{
+  "run": 39756038385,
+  "snapshot": "2026-10-22T09:37:39.103Z",
+  "status": "completed",
+  "started": "2026-10-22T09:31:08Z",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "started": "2026-10-22T09:31:09Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:31:10Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/setup-node@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:31:15Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run npm ci",
+      "status": "completed",
+      "started": "2026-10-22T09:31:21Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run node node_modules/electron/install.js",
+      "status": "completed",
+      "started": "2026-10-22T09:31:37Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run npm run build:icons",
+      "status": "completed",
+      "started": "2026-10-22T09:31:42Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Reuse checksum-verified released runtime without rebuilding Setup",
+      "status": "completed",
+      "started": "2026-10-22T09:31:42Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Unit and concurrency tests",
+      "status": "completed",
+      "started": "2026-10-22T09:31:50Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Runtime and build dependency security audit",
+      "status": "completed",
+      "started": "2026-10-22T09:32:59Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Responsive UI search pagination and 2000-record rendering check",
+      "status": "completed",
+      "started": "2026-10-22T09:33:01Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Actual desktop 31-product batch and browser controls",
+      "status": "completed",
+      "started": "2026-10-22T09:33:07Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Downloads cancellation deletion and restart persistence",
+      "status": "completed",
+      "started": "2026-10-22T09:35:11Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Failed Links automatic sorting restart copy export and isolated retry",
+      "status": "completed",
+      "started": "2026-10-22T09:35:15Z",
+      "conclusion": "failure"
+    },
+    {
+      "name": "Build code only without Electron or Chromium",
+      "status": "completed",
+      "started": "2026-10-22T09:35:19Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Existing Windows EXE small-update and native visibility acceptance",
+      "status": "completed",
+      "started": "2026-10-22T09:35:19Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Build smaller Lite Setup without bundled Chromium",
+      "status": "completed",
+      "started": "2026-10-22T09:35:19Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Install launch and uninstall the actual Lite Setup",
+      "status": "completed",
+      "started": "2026-10-22T09:35:19Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Run actions/upload-artifact@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:35:19Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Run actions/upload-artifact@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:35:21Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Run actions/upload-artifact@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:35:21Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Post Run actions/setup-node@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:35:21Z",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Post Run actions/checkout@v4",
+      "status": "completed",
+      "started": "2026-10-22T09:35:21Z",
+      "conclusion": "success"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "started": "2026-10-22T09:35:23Z",
+      "conclusion": "success"
+    }
+  ],
+  "failure": "verify\tFailed Links automatic sorting restart copy export and isolated retry\t﻿2026-10-22T09:35:15.7193519Z ##[group]Run node test/failures.e2e.js\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7194012Z ^[[36;1mnode test/failures.e2e.js^[[0m\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7262739Z shell: C:\\Program Files\\PowerShell\\7\\pwsh.EXE -command \". '{0}'\"\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7263222Z env:\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7263809Z   CODE_UPDATE_BASE_EXE: D:\\a\\Software\\Software\\test-results\\base-runtime\\app\\AliExpress Product Archiver.exe\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7264665Z   TEST_CHROMIUM: D:\\a\\Software\\Software\\test-results\\base-runtime\\app\\resources\\chromium\\chromium-1248\\chrome-win64\\chrome.exe\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:15.7265301Z ##[endgroup]\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4343501Z AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4344314Z \nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4344431Z 1 !== 2\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4344699Z \nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4344962Z     at D:\\a\\Software\\Software\\test\\failures.e2e.js:39:66 {\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4345393Z   generatedMessage: true,\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4345735Z   code: 'ERR_ASSERTION',\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4346048Z   actual: 1,\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4346507Z   expected: 2,\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4346810Z   operator: 'strictEqual',\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4347469Z   diff: 'simple'\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.4347829Z }\nverify\tFailed Links automatic sorting restart copy export and isolated retry\t2026-10-22T09:35:19.5533556Z ##[error]Process completed with exit code 1.\n"
+}
