@@ -1,5 +1,7 @@
 const $=id=>document.getElementById(id);
-let settings, state, installation, updateState={status:'idle',currentVersion:'1.4.4',totalBytes:0,downloadedBytes:0,canRestart:false};
+let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,view='grid',lastLatest=null;
+let updateState={status:'idle',currentVersion:'1.4.5',totalBytes:0,downloadedBytes:0,canRestart:false};
+const downloadCache=new Map(),rowCache=new Map();
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
 $('clearLinks').onclick=()=>linkGrid.clear();
@@ -9,8 +11,12 @@ $('importLinks').onclick=importTextLinks;
 async function call(name,value) {return window.desktop.call(name,value);}
 function error(e){$('error').textContent=e.message||String(e);$('error').hidden=false;}
 function notice(message){$('notice').textContent=message;$('notice').hidden=!message;}
-function tab(name){$('workspaceTitle').textContent=({bulk:'Bulk Links',progress:'Progress',downloads:'Downloads',settings:'Settings'})[name]||name;for(const el of document.querySelectorAll('.panel')) el.hidden=el.id!==name;for(const el of document.querySelectorAll('.tab')) el.classList.toggle('active',el.dataset.tab===name);}
+function tab(name){if(!['bulk','progress','downloads','settings'].includes(name))return;activeTab=name;$('workspaceTitle').textContent=({bulk:'Bulk Links',progress:'Progress',downloads:'Downloads',settings:'Settings'})[name];for(const node of document.querySelectorAll('.panel'))node.hidden=node.id!==name;for(const node of document.querySelectorAll('.tab')){node.classList.toggle('active',node.dataset.tab===name);if(node.dataset.tab===name)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');}$('workspaceScroll').scrollTop=0;if(state)paint();}
 function el(tag,text,cls){const node=document.createElement(tag);if(text!=null)node.textContent=text;if(cls)node.className=cls;return node;}
+function icon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),use=document.createElementNS(svg.namespaceURI,'use');svg.classList.add('icon');svg.setAttribute('aria-hidden','true');use.setAttribute('href',`icons.svg#${name}`);svg.append(use);return svg;}
+function command(label,name,action,classes='secondary'){const button=el('button',null,classes);button.append(icon(name),document.createTextNode(label));button.onclick=()=>Promise.resolve().then(action).catch(error);return button;}
+function empty(message,name='folder-down'){const node=el('div',null,'empty');node.append(icon(name),el('span',message));return node;}
+function reconcile(parent,nodes){let next=parent.firstElementChild;for(const node of nodes){if(node===next)next=next.nextElementSibling;else parent.insertBefore(node,next);}while(next){const remove=next;next=next.nextElementSibling;remove.remove();}}
 function dataPreview(data){
   const description=data.descriptionFull||data.descriptionPreview||'',seller=data.sellerDescriptionFull||data.sellerDescriptionPreview||'';
   if(data.rowCount==null&&!description&&!seller&&!data.detailsPreview?.length)return null;
@@ -29,7 +35,7 @@ function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.4'}`;$('runningVersion').textContent=u.currentVersion||'1.4.4';
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.5'}`;$('runningVersion').textContent=u.currentVersion||'1.4.5';
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -44,52 +50,112 @@ function renderUpdate(value){
   $('updateSize').textContent=u.status==='downloading'?`${bytesLabel(downloaded)}${total?` of ${bytesLabel(total)}`:''}`:total?`Small update size: ${bytesLabel(total)}`:'';
 }
 
-function render(s){
-  state=s; linkGrid.syncQueue(s.items); const done=s.items.filter(i=>i.status==='done').length, failed=s.items.filter(i=>i.status==='failed').length;
+function render(s){state=s;if(framePending)return;framePending=true;requestAnimationFrame(()=>{framePending=false;paint();});}
+function paint(){
+  const s=state;if(!s)return;
+  const done=s.items.filter(i=>i.status==='done').length,failed=s.items.filter(i=>i.status==='failed').length;
   const pending=s.items.filter(i=>['pending','running','waiting'].includes(i.status)).length;
-  $('queueCount').textContent=pending;$('downloadCount').textContent=s.downloads.length;$('statQueued').textContent=pending;$('statDone').textContent=s.downloads.length;$('statFailed').textContent=failed;
-  $('bar').style.width=`${s.items.length?100*(done+failed)/s.items.length:0}%`;
-  $('summary').textContent=`${s.paused?'Paused':s.running?'Running':'Idle'} · ${done} complete · ${failed} failed · ${pending} remaining · ${s.activeTabs||0} active tabs`;
-  $('pause').disabled=!s.running||s.paused;$('resume').disabled=!s.paused;$('retry').disabled=s.running||!failed;$('clear').disabled=s.running;$('run').disabled=s.running;$('saveSettings').disabled=s.running;$('manageInstallation').disabled=s.running||!installation?.installed;renderUpdate();
-  $('clearRecords').disabled=!s.downloads.length;$('historyCount').textContent=`${s.downloads.length} records`;
+  const percent=s.items.length?Math.round(100*(done+failed)/s.items.length):0;
+  const status=s.paused?'Paused':s.waiting?'Waiting':s.running?'Running':'Idle';
+  $('queueCount').textContent=pending;$('downloadCount').textContent=s.downloads.length;
+  $('statQueued').textContent=pending;$('statDone').textContent=s.downloads.length;$('statFailed').textContent=failed;
+  $('bar').style.width=percent+'%';$('bar').parentElement.setAttribute('aria-valuenow',String(percent));$('progressPercent').textContent=percent+'%';
+  $('runStatus').textContent=status;$('runStatus').dataset.state=status.toLowerCase();$('footerStatus').textContent=status;
+  $('summary').textContent=`${status} · ${done} complete · ${failed} failed · ${pending} remaining · ${s.activeTabs||0} active tabs`;
+  $('progressCaption').textContent=s.running?`${pending} products remaining in this run.`:s.items.length?`${done} products complete.`:'Your queue is ready.';
+  $('activityCount').textContent=s.items.length+' products';
+  $('pause').disabled=!s.running||s.paused;$('resume').disabled=!s.paused;$('retry').disabled=s.running||!failed;
+  $('clear').disabled=s.running;$('run').disabled=s.running;$('saveSettings').disabled=s.running;
+  $('manageInstallation').disabled=s.running||!installation?.installed;$('clearRecords').disabled=!s.downloads.length;
+  $('historyCount').textContent=s.downloads.length+' saved archives';
   $('manual').hidden=!s.waiting;$('manualText').textContent=s.waiting||'';
-  const latest=s.downloads[0];$('latestExport').hidden=!latest;$('latestTitle').textContent=latest?.title||latest?.productId||'';$('latestMessage').textContent=s.running?'This ZIP is saved. The remaining products continue in the same Chromium session.':'Saved locally. All completed ZIPs are available in Downloads.';
-  const latestPanel=$('latestDataPreview'),latestOpen=latestPanel.dataset.archivePath===latest?.path&&!!latestPanel.querySelector('details')?.open;latestPanel.replaceChildren();const latestPreview=latest?dataPreview(latest):null;if(latestPreview){latestPreview.open=latestOpen;latestPanel.append(latestPreview);}latestPanel.dataset.archivePath=latest?.path||'';latestPanel.hidden=!latestPreview;
-  notice(s.message||'');
-  $('items').replaceChildren();
-  if(!s.items.length)$('items').append(el('p','Your queue is empty. Add links in Bulk Links.','empty'));
-  for(const item of s.items){const row=el('div',null,'row'), content=el('div',null,'row-content');content.append(el('div',item.title||item.url,'row-title'),el('small',item.error||`Product ${item.productId} · Attempts: ${item.attempts}${item.warnings?` · ${item.warnings} warnings`:''}`));row.append(content,el('span',item.status,'status '+item.status));$('items').append(row);}
-  const openPreviews=new Set([...$('downloadList').querySelectorAll('.download-card')].filter(card=>card.querySelector('.data-preview')?.open).map(card=>card.dataset.archivePath));
-  $('downloadList').replaceChildren();
-  if(!s.downloads.length)$('downloadList').append(el('div','Your completed Excel and JPEG product ZIPs will appear here.','empty'));
-  s.downloads.forEach((d,index)=>{
-    const card=el('article',null,'download-card'),preview=el('div',null,'preview');card.dataset.archivePath=d.path;
-    if(d.preview?.startsWith('data:image/')){const img=el('img');img.src=d.preview;img.alt=d.title||'Product image';img.decoding='async';img.loading='lazy';preview.append(img);}else preview.textContent='No image available';
-    const body=el('div',null,'download-body');
-    body.append(el('span',d.exportFormat==='product-xlsx-jpeg-v7'?'Excel + JPEG':['product-xlsx-jpeg-v4','product-xlsx-jpeg-v5','product-xlsx-jpeg-v6'].includes(d.exportFormat)?'Earlier Excel + JPEG':d.exportFormat==='product-csv-xlsx-jpeg-v3'?'Earlier Excel + CSV':d.exportFormat==='product-csv-jpeg-v2'?'Full product CSV + JPEG':d.exportFormat==='csv-jpeg-v1'?'CSV + JPEG':'Earlier archive','badge'),el('h3',d.title||d.productId),el('p',`${d.images} ${['csv-jpeg-v1','product-csv-jpeg-v2','product-csv-xlsx-jpeg-v3','product-xlsx-jpeg-v4','product-xlsx-jpeg-v5','product-xlsx-jpeg-v6','product-xlsx-jpeg-v7'].includes(d.exportFormat)?'JPEG images':'images'} · ${(d.warnings||[]).length} warnings · ${new Date(d.capturedAt).toLocaleString()}`),el('p',d.path));
-    const previewData=dataPreview(d);if(previewData){previewData.open=openPreviews.has(d.path);body.append(previewData);}
-    const button=el('button','Show ZIP in folder','secondary');button.onclick=()=>call('show',index).catch(error);
-    const remove=el('button','Delete record','secondary danger');remove.title='Remove this record; keep its ZIP file';remove.onclick=async()=>{try{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);}catch(e){error(e);}};
-    const actions=el('div',null,'download-actions');actions.append(remove);body.append(button);
-    if(d.warnings?.length){const details=el('details');details.append(el('summary','View warnings'));for(const w of d.warnings)details.append(el('p',w));body.append(details);}
-    card.append(actions,preview,body);$('downloadList').append(card);
-  });
+  if(s.browser){$('browserStatus').dataset.visible=String(s.browser.visible);$('browserStatus').lastChild.textContent=s.browser.visible?'Browser visible':s.browser.open?'Browser hidden':'Browser closed';}
+  notice(s.message||'');renderUpdate();renderLatest(s.downloads[0],s.running);
+  if(activeTab==='bulk')linkGrid.syncQueue(s.items);
+  if(activeTab==='progress')renderItems();
+  if(activeTab==='downloads')renderDownloads();
 }
-function applySettings(value){settings=value;$('folderLabel').textContent=value.output;$('skipDuplicates').checked=value.skipDuplicates;$('delay').value=value.delayMs/1000;$('settle').value=value.settleMs/1000;$('parallelTabs').value=value.parallelTabs||3;$('backgroundBrowser').checked=value.backgroundBrowser!==false;$('keepRunningInBackground').checked=value.keepRunningInBackground!==false;}
+function renderLatest(latest,running){
+  $('latestExport').hidden=!latest;$('bulkLatest').hidden=!latest;$('bulkLatestEmpty').hidden=!!latest;
+  $('latestMessage').textContent=running?'Saved to your output folder.':'Saved locally.';
+  const key=latest?latest.path+'|'+(latest.previewRepairVersion||0):null;
+  if(key===lastLatest)return;lastLatest=key;
+  $('latestDataPreview').replaceChildren();$('bulkLatestPhoto').replaceChildren();
+  if(!latest)return;
+  $('latestTitle').textContent=latest.title||latest.productId;$('bulkLatestTitle').textContent=latest.title||latest.productId;
+  $('bulkLatestMeta').textContent=`${latest.images||0} JPEGs · ${latest.rowCount||0} variations`;
+  if(latest.preview?.startsWith('data:image/')){const img=el('img');img.src=latest.preview;img.alt=latest.title||'Product photo';img.decoding='async';$('bulkLatestPhoto').append(img);}else $('bulkLatestPhoto').append(icon('image'));
+  const details=dataPreview(latest);if(details)$('latestDataPreview').append(details);
+}
+function renderItems(){
+  const nodes=[],ids=new Set(state.items.map(item=>item.id));
+  for(const id of rowCache.keys())if(!ids.has(id))rowCache.delete(id);
+  for(const [index,item] of state.items.slice(0,itemLimit).entries()){
+    const signature=JSON.stringify([item.status,item.title,item.url,item.error,item.attempts,item.warnings]);let cached=rowCache.get(item.id);
+    if(!cached||cached.signature!==signature){
+      const row=el('div',null,'row'),leading=el('div',null,'row-leading'),content=el('div',null,'row-content');row.dataset.state=item.status;leading.dataset.state=item.status;
+      const symbol=({running:'loader-circle',waiting:'shield-alert',done:'check',failed:'circle-alert'})[item.status];if(symbol)leading.append(icon(symbol));else leading.textContent=String(index+1).padStart(2,'0');
+      content.append(el('div',item.title||item.url,'row-title'),el('small',item.error||`Product ${item.productId} · Attempt ${item.attempts||0}${item.warnings?` · ${item.warnings} warnings`:''}`));
+      row.append(leading,content,el('span',item.status,'status '+item.status));cached={signature,node:row};rowCache.set(item.id,cached);
+    }
+    nodes.push(cached.node);
+  }
+  if(!nodes.length)nodes.push(empty('No products in this queue.','list-plus'));
+  reconcile($('items'),nodes);$('moreItems').hidden=state.items.length<=itemLimit;
+}
+function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.preview?.length]);}
+function downloadCard(d){
+  const card=el('article',null,'download-card'),actions=el('div',null,'download-actions'),preview=el('div',null,'preview'),body=el('div',null,'download-body');card.dataset.archivePath=d.path;
+  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v7'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
+  const remove=command('','trash-2',async()=>{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);},'icon-button danger');
+  remove.setAttribute('aria-label','Delete record');remove.dataset.tooltip='Delete record; keep ZIP';actions.append(el('span',badge,'badge'),remove);
+  if(d.preview?.startsWith('data:image/')){const image=el('img');image.src=d.preview;image.alt=d.title||'Product image';image.decoding='async';image.loading='lazy';preview.append(image);}else preview.append(icon('image'));
+  const title=el('h3',d.title||d.productId);title.title=title.textContent;body.append(title);
+  const prices=[...new Set((d.detailsPreview||[]).map(row=>row.price).filter(Boolean))];if(prices.length)body.append(el('div',prices.slice(0,3).join(' / '),'download-price'));
+  const meta=el('div',null,'download-meta');meta.append(icon('image'),el('span',`${d.images||0} JPEGs${d.rowCount!=null?` · ${d.rowCount} variations`:''}${d.warnings?.length?` · ${d.warnings.length} warnings`:''}`));body.append(meta);
+  body.append(el('p',Number.isNaN(Date.parse(d.capturedAt))?'':new Date(d.capturedAt).toLocaleString(),'download-time'));
+  const details=dataPreview(d);if(details)body.append(details);
+  const location=el('details',null,'archive-location');location.append(el('summary','File location'),el('p',d.path));body.append(location,command('Open folder','folder-open',()=>call('show',d.path)));
+  if(d.warnings?.length){const warnings=el('details');warnings.append(el('summary','View warnings'));for(const warning of d.warnings)warnings.append(el('p',warning));body.append(warnings);}
+  card.append(actions,preview,body);return card;
+}
+function renderDownloads(){
+  const query=$('downloadSearch').value.trim().toLocaleLowerCase(),sort=$('downloadSort').value;
+  let records=state.downloads.filter(d=>!query||[d.title,d.productId].some(value=>String(value||'').toLocaleLowerCase().includes(query)));
+  if(sort==='oldest')records=[...records].reverse();else if(sort==='title')records=[...records].sort((a,b)=>String(a.title||a.productId).localeCompare(String(b.title||b.productId)));
+  const ids=new Set(state.downloads.map(d=>d.path));for(const id of downloadCache.keys())if(!ids.has(id))downloadCache.delete(id);
+  const visible=records.slice(0,downloadLimit),nodes=visible.map(record=>{const signature=archiveSignature(record);let cached=downloadCache.get(record.path);if(!cached||cached.signature!==signature){cached={signature,node:downloadCard(record)};downloadCache.set(record.path,cached);}return cached.node;});
+  if(!nodes.length)nodes.push(empty(query?'No matching products.':'No saved archives yet.',query?'search':'folder-down'));
+  reconcile($('downloadList'),nodes);$('moreDownloads').hidden=records.length<=downloadLimit;
+  $('downloadResults').textContent=records.length?`${visible.length} of ${records.length} archives`:'';
+}
+function applySettings(value){settings=value;$('folderLabel').textContent=value.output;$('folderLabel').title=value.output;$('skipDuplicates').checked=value.skipDuplicates;$('delay').value=value.delayMs/1000;$('settle').value=value.settleMs/1000;$('parallelTabs').value=value.parallelTabs||3;$('backgroundBrowser').checked=value.backgroundBrowser!==false;$('keepRunningInBackground').checked=value.keepRunningInBackground!==false;$('defaultTabs').textContent=`${value.parallelTabs||3} parallel tabs`;$('defaultDuplicates').textContent=value.skipDuplicates?'Skip saved':'Allow repeats';}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+document.querySelectorAll('[data-open-tab]').forEach(button=>button.onclick=()=>tab(button.dataset.openTab));
+document.querySelector('.brand').onclick=event=>{event.preventDefault();tab('bulk');};
+$('importToggle').onclick=()=>{$('bulkPaste').open=!$('bulkPaste').open;if($('bulkPaste').open)$('urls').focus();};
+$('moreItems').onclick=()=>{itemLimit+=150;renderItems();};
+$('moreDownloads').onclick=()=>{downloadLimit+=24;renderDownloads();};
+for(const id of ['downloadSearch','downloadSort'])$(id).addEventListener(id==='downloadSearch'?'input':'change',()=>{downloadLimit=24;renderDownloads();});
+for(const [id,value] of [['gridView','grid'],['listView','list']])$(id).onclick=()=>{view=value;$('downloadList').classList.toggle('list-mode',view==='list');for(const [button,mode] of [['gridView','grid'],['listView','list']]){$(button).classList.toggle('active',view===mode);$(button).setAttribute('aria-pressed',String(view===mode));}};
+const tooltip=$('tooltip');
+function hideTooltip(){tooltip.hidden=true;}
+function showTooltip(target){if(!target)return;tooltip.textContent=target.dataset.tooltip;tooltip.hidden=false;const rect=target.getBoundingClientRect();tooltip.style.left=Math.max(8,Math.min(innerWidth-tooltip.offsetWidth-8,rect.left+rect.width/2-tooltip.offsetWidth/2))+'px';tooltip.style.top=(rect.bottom+tooltip.offsetHeight+16>innerHeight?rect.top-tooltip.offsetHeight-8:rect.bottom+8)+'px';}
+document.addEventListener('pointerover',event=>showTooltip(event.target.closest('[data-tooltip]')));
+document.addEventListener('pointerout',hideTooltip);document.addEventListener('focusin',event=>showTooltip(event.target.closest('[data-tooltip]')));document.addEventListener('focusout',hideTooltip);$('workspaceScroll').addEventListener('scroll',hideTooltip,{passive:true});
 async function showBrowser(){const buttons=[$('openBrowser'),$('showManualBrowser')];buttons.forEach(button=>button.disabled=true);notice('Showing Chromium with your saved login session.');try{await call('browser');}catch(e){error(e);}finally{buttons.forEach(button=>button.disabled=false);}}
 $('openBrowser').onclick=showBrowser;$('showManualBrowser').onclick=showBrowser;
 $('hideBrowser').onclick=()=>call('hide-browser').then(()=>notice('Chromium is hidden. Your login and extraction session stay active.')).catch(error);
 $('manageInstallation').onclick=async()=>{const button=$('manageInstallation');button.disabled=true;try{await call('uninstall');notice('The Windows uninstaller has started. The app will close.');}catch(e){error(e);button.disabled=!installation?.installed||!!state?.running;}};
 $('hideApp').onclick=()=>call('hide-app').catch(error);
 $('chooseFolder').onclick=()=>call('folder').then(applySettings).catch(error);
-$('showLatest').onclick=()=>call('show',0).catch(error);
+$('showLatest').onclick=$('bulkLatestShow').onclick=()=>{const latest=state?.downloads[0];if(latest)call('show',latest.path).catch(error);};
 $('clearRecords').onclick=async()=>{try{const ids=state.downloads.map(d=>d.productId);if(await call('clear-downloads')){for(const id of ids)linkGrid.resetResults(id);$('error').hidden=true;}}catch(e){error(e);}};
 $('saveSettings').onclick=()=>call('settings',{skipDuplicates:$('skipDuplicates').checked,backgroundBrowser:$('backgroundBrowser').checked,keepRunningInBackground:$('keepRunningInBackground').checked,parallelTabs:Number($('parallelTabs').value),delayMs:Number($('delay').value)*1000,settleMs:Number($('settle').value)*1000}).then(v=>{applySettings(v);notice('Settings saved.');}).catch(error);
-$('run').onclick=async()=>{const button=$('run');button.disabled=true;try{$('error').hidden=true;importTextLinks();const entries=linkGrid.entries();if(entries.length){const results=await call('add',entries.map(entry=>entry.value).join('\n'));linkGrid.markResults(entries,results);const invalid=results.filter(result=>result.status==='invalid');if(invalid.length)error(new Error(invalid.map(result=>`${result.url}: ${result.error}`).join('\n')));notice(`${results.filter(result=>result.status==='pending').length} links added · ${results.filter(result=>result.status==='duplicate').length} duplicates skipped.`);}if(!state.items.some(item=>item.status==='pending'))return;tab('progress');await call('run');}catch(e){error(e);}finally{button.disabled=!!state?.running;}};
+$('run').onclick=async()=>{const button=$('run');button.disabled=true;try{$('error').hidden=true;importTextLinks();const entries=linkGrid.entries();let pending=state?.items.some(item=>item.status==='pending');if(entries.length){const results=await call('add',entries.map(entry=>entry.value).join('\n'));linkGrid.markResults(entries,results);pending=pending||results.some(result=>result.status==='pending');const invalid=results.filter(result=>result.status==='invalid');if(invalid.length)error(new Error(invalid.map(result=>`${result.url}: ${result.error}`).join('\n')));notice(`${results.filter(result=>result.status==='pending').length} links added · ${results.filter(result=>result.status==='duplicate').length} duplicates skipped.`);}if(!pending)return;tab('progress');await call('run');}catch(e){error(e);}finally{button.disabled=!!state?.running;}};
 for(const name of ['pause','resume','continue','clear'])$(name).onclick=()=>call(name).catch(error);
 $('retry').onclick=async()=>{try{await call('retry');await call('run');}catch(e){error(e);}};
 for(const [button,action] of [['checkUpdates','update-check'],['downloadUpdate','update-download'],['restartUpdate','update-restart']])$(button).onclick=async()=>{const control=$(button);control.disabled=true;try{$('error').hidden=true;const result=await call(action);if(result)renderUpdate(result);}catch(e){error(e);}finally{renderUpdate();}};
 window.desktop.onState(render);
 window.desktop.onUpdate?.(renderUpdate);
-call('initial').then(v=>{installation=v.installation;$('installationStatus').textContent=installation?.installed?'Installed on Windows. Click Uninstall software to open the uninstaller and close this app. Your product exports are kept.':'Portable copy. Use the Setup installer to add Windows uninstall support, or Quit and delete the portable EXE.';applySettings(v.settings);render(v.state);renderUpdate(v.update||v.updateState);}).catch(error);
+call('initial').then(v=>{installation=v.installation;$('installationStatus').textContent=installation?.installed?'Installed on Windows.':'Portable copy.';applySettings(v.settings);render(v.state);renderUpdate(v.update||v.updateState);}).catch(error);

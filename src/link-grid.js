@@ -31,7 +31,7 @@
     } catch { return {state: 'invalid', message: 'Use a full AliExpress /item/NUMBER.html link', productId: null}; }
   }
   function create({body, summary, initialRows = 30, onChange = () => {}}) {
-    let sequence = 0, rows = [], queueItems = [];
+    let sequence = 0, rows = [], queueById = new Map(), queueSignature='';
     const blank = () => ({id: ++sequence, value: '', result: null});
     const element = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
     function focusRow(index) { const input = body.querySelectorAll('.link-url')[index]; input?.focus(); }
@@ -48,7 +48,7 @@
         if (row.result && row.result.value === value && row.result.status !== 'invalid') {
           if (row.result.status === 'duplicate') status = {state: 'skipped', message: 'Duplicate skipped'};
           else {
-            const job = queueItems.find(item => item.id === row.result.jobId);
+            const job = queueById.get(row.result.jobId);
             const labels = {pending: 'Queued', running: 'Running', waiting: 'Waiting', done: 'Saved', failed: 'Failed — retry in Progress'};
             const state = job?.status || 'pending';
             status = {state: state === 'pending' ? 'queued' : state, message: labels[state] || 'Queued'};
@@ -110,7 +110,7 @@
     rows = Array.from({length: initialRows}, blank); render();
     return {
       importText, entries, markResults,
-      syncQueue(items) { queueItems = items || []; refresh(); },
+      syncQueue(items) { const jobs=items||[],signature=jobs.map(item=>item.id+':'+item.status).join('|');if(signature===queueSignature)return;queueSignature=signature;queueById=new Map(jobs.map(item=>[item.id,item]));refresh(); },
       resetResults(productId) { for (const row of rows) if (validateUrl(row.value).productId === productId) row.result = null; refresh(); },
       addRows(count = 10) { const index = rows.length; for (let n = 0; n < count; n++) rows.push(blank()); render(); focusRow(index); },
       setRows(count) { const last = rows.reduce((found, row, index) => row.value.trim() ? index : found, -1); const target = Math.max(count, last + 1, 1); while (rows.length < target) rows.push(blank()); rows = rows.slice(0, target); render(); },

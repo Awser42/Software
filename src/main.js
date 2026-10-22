@@ -18,7 +18,8 @@ function persist(state) {
   writes=writes.catch(()=>{}).then(async()=>{await fs.writeFile(statePath+'.tmp',text); await fs.rename(statePath+'.tmp',statePath);});
   return writes;
 }
-function send(state) {if(win && !win.isDestroyed()) win.webContents.send('state',state);refreshTray();}
+let stateTimer,traySignature;
+function send() {if(stateTimer)return;stateTimer=setTimeout(()=>{stateTimer=null;if(win&&!win.isDestroyed())win.webContents.send('state',{...queue.state(),browser:{open:!!browser.context,visible:!!browser.context&&!browser.hidden}});refreshTray();},50);}
 function updateState(state){if(win&&!win.isDestroyed())win.webContents.send('update-state',state);}
 function thumbnail(image){const size=image.getSize();const scale=Math.min(1,480/size.width,480/size.height);return image.resize({width:Math.max(1,Math.round(size.width*scale)),height:Math.max(1,Math.round(size.height*scale)),quality:'best'}).toDataURL();}
 async function repairSavedPreviews(){
@@ -33,6 +34,7 @@ async function repairSavedPreviews(){
 }
 function refreshTray(){
   if(!tray)return;
+  const signature=JSON.stringify([!!queue?.waiting,!!queue?.running,!!queue?.paused]);if(signature===traySignature)return;traySignature=signature;
   tray.setToolTip(queue?.waiting?'AliExpress Archiver — needs your attention':queue?.running?'AliExpress Archiver — working':'AliExpress Product Archiver');
   tray.setContextMenu(Menu.buildFromTemplate([
     {label:'Show software',click:showApp},
@@ -64,7 +66,7 @@ app.whenReady().then(async()=>{
     return result;
   }});
   queue.on('state',send);
-  win=new BrowserWindow({width:1200,height:850,minWidth:900,minHeight:650,autoHideMenuBar:true,backgroundColor:'#f5f7fb',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  win=new BrowserWindow({width:1280,height:860,minWidth:380,minHeight:500,autoHideMenuBar:true,backgroundColor:'#f6f8f9',webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',e=>e.preventDefault());
   win.on('close',event=>{if(!quitting&&settings.keepRunningInBackground&&tray){event.preventDefault();win.hide();}});
@@ -77,7 +79,7 @@ function handle(name, fn) {ipcMain.handle(name, async(event,...args)=>{
   if(event.sender!==win?.webContents || event.senderFrame!==win.webContents.mainFrame) throw new Error('Untrusted caller');
   return fn(...args);
 });}
-handle('initial',async()=>({settings,state:queue.state(),update:updater.info(),installation:await installationInfo()}));
+handle('initial',async()=>({settings,state:{...queue.state(),browser:{open:!!browser.context,visible:!!browser.context&&!browser.hidden}},update:updater.info(),installation:await installationInfo()}));
 handle('uninstall',async()=>{if(queue.running)throw new Error('Finish the current run before uninstalling.');if(uninstalling)throw new Error('The uninstaller is already starting.');uninstalling=true;try{const result=await launchUninstaller({beforeLaunch:async()=>{await queue.publish();await writes;await browser.close();}});quitting=true;setTimeout(()=>app.quit(),150);return result;}catch(error){uninstalling=false;throw error;}});
 handle('folder',async()=>{const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory']}); if(!result.canceled) {settings.output=result.filePaths[0]; await queue.publish();} return settings;});
 handle('settings',async value=>{
@@ -88,11 +90,11 @@ handle('settings',async value=>{
   settings.delayMs=Math.max(500,Math.min(60000,Number(value.delayMs)||2000));
   settings.settleMs=Math.max(1000,Math.min(30000,Number(value.settleMs)||3000));
   settings.parallelTabs=Math.max(1,Math.min(4,Math.floor(Number(value.parallelTabs)||3)));
-  await queue.publish(); return settings;
+  queue.message='Settings saved.';await queue.publish(); return settings;
 });
 handle('add',async text=>{
   if(typeof text!=='string' || text.length>1000000) throw new Error('Paste up to 1 MB of URLs.');
-  return queue.add(text.split(/\r?\n/),settings.skipDuplicates);
+  const results=await queue.add(text.split(/\r?\n/),settings.skipDuplicates);queue.message=`${results.filter(result=>result.status==='pending').length} links added · ${results.filter(result=>result.status==='duplicate').length} duplicates skipped.`;send();return results;
 });
 handle('run',async()=>{
   if(!settings.output) throw new Error('Select an output folder.');
@@ -116,7 +118,7 @@ handle('update-restart',async()=>{
   if(!updater.info().canRestart)throw new Error('No downloaded update is ready.');
   await writes;await browser.close();app.relaunch({exePath:process.env.PORTABLE_EXECUTABLE_FILE||process.execPath});app.quit();
 });
-handle('show',async index=>{const record=queue.downloads[index]; if(!record) throw new Error('Unknown download'); await fs.access(record.path);shell.showItemInFolder(record.path);});
+handle('show',async target=>{const record=typeof target==='string'?queue.downloads.find(download=>download.path===target):queue.downloads[target];if(!record)throw new Error('Unknown download');await fs.access(record.path);shell.showItemInFolder(record.path);});
 async function deleteRecords(archivePath = null,{downloadsOnly=false} = {}) {
   if(queue.running&&!downloadsOnly)throw new Error('Wait for the run to finish before deleting records.');
   const record=archivePath===null?null:queue.downloads.find(d=>d.path===archivePath);

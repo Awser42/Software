@@ -12,12 +12,18 @@ class Browser {
   constructor(dataDir, notify = () => {}, {resourcesPath=process.resourcesPath,platform=process.platform,windowVisibility=chromiumWindowVisibility} = {}) { this.dataDir=dataDir; this.notify=notify; this.resourcesPath=resourcesPath;this.platform=platform;this.windowVisibility=windowVisibility;this.browserExecutablePath=null;this.context=null; this.page=null; this.installing=null;this.opening=null;this.hidden=true;this.activePages=new Map();this.attentionPages=new Map(); }
   currentPage() {return [...this.attentionPages.values(),...this.activePages.values(),this.page].find(page=>page&&!page.isClosed());}
   async browserProcessId() {
+    if(this.processId)return this.processId;
+    if(this.processIdPromise)return this.processIdPromise;
+    this.processIdPromise=this.readBrowserProcessId();
+    try{return await this.processIdPromise;}finally{this.processIdPromise=null;}
+  }
+  async readBrowserProcessId(){
     const session=await this.context.browser().newBrowserCDPSession();
     try {
       const {processInfo}=await session.send('SystemInfo.getProcessInfo');
       const id=processInfo.find(info=>info.type==='browser')?.id;
       if(!Number.isSafeInteger(id)||id===process.pid)throw new Error('Chromium process identity is unavailable.');
-      return id;
+      this.processId=id;return id;
     } finally {await session.detach();}
   }
   async visibility() {return this.windowVisibility(await this.browserProcessId(),'inspect');}
@@ -52,7 +58,7 @@ class Browser {
     this.notify('Downloading verified Playwright Chromium. First launch can take several minutes.');
     this.installing = new Promise((resolve, reject) => {
       const cli=path.join(path.dirname(require.resolve('playwright/package.json')), 'cli.js').replace(/app\.asar([/\\])/, 'app.asar.unpacked$1');
-      const child=spawn(process.execPath, [cli, 'install', 'chromium'], {
+      const child=spawn(process.execPath, [cli, 'install', 'chromium', '--no-shell'], {
         env:{...process.env, ELECTRON_RUN_AS_NODE:'1'}, windowsHide:true
       });
       child.stdout.on('data', b => this.notify(b.toString().trim()));
@@ -74,7 +80,7 @@ class Browser {
       await this.ensureInstalled();
       const {chromium}=require('playwright');
       this.context=await chromium.launchPersistentContext(path.join(this.dataDir,'chromium-profile'), {headless:false, viewport:null, acceptDownloads:false,args:['--lang=en-US',...(!show?['--start-minimized']:[])],...(this.browserExecutablePath?{executablePath:this.browserExecutablePath}:{})});
-      this.context.on('close', () => {this.context=null; this.page=null;this.hidden=true;this.activePages.clear();this.attentionPages.clear();});
+      this.context.on('close', () => {this.windowVisibility.close?.(this.processId);this.processId=null;this.processIdPromise=null;this.context=null;this.page=null;this.hidden=true;this.activePages.clear();this.attentionPages.clear();});
       this.page=this.context.pages()[0] || await this.context.newPage();
       if(!await this.setWindowVisibility(show))throw new Error(`Chromium could not be ${show?'shown':'hidden'}. Try Show Chromium / Login again.`);
       await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
@@ -290,6 +296,6 @@ class Browser {
       throw new Error('Login or verification is still blocking the page. Complete it and retry this link.');
     } finally {page.off('response',handler);this.activePages.delete(item.id);this.attentionPages.delete(item.id);await page.close().catch(()=>{});}
   }
-  async close() {if(this.opening)await this.opening.catch(()=>{});if(this.context) await this.context.close();}
+  async close() {if(this.opening)await this.opening.catch(()=>{});if(this.context)await this.context.close();this.windowVisibility.close?.(this.processId);this.processId=null;}
 }
 module.exports={Browser};

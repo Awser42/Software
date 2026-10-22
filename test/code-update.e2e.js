@@ -60,14 +60,14 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
         await queue.add(fixtures.map(f=>'https://www.aliexpress.com/item/'+f.id+'.html'));
         const settings={output:app.getPath('userData')+'/exports',parallelTabs:3,settleMs:100,backgroundBrowser:true};
         await queue.run(settings);
-        const final=await browser.visibility();const remainingTabs=context.pages().length;
+        const final=await browser.visibility();const remainingTabs=context.pages().length;const visibilityWorker=browser.windowVisibility.stats();
         await browser.close();await browser.open('about:blank',{show:false});
         const cookies=await browser.context.cookies('https://www.aliexpress.com/');
-        return {states,softwareVisible,peak,authenticated,final,remainingTabs,items:queue.items,downloads:queue.downloads,cookiePreserved:cookies.some(cookie=>cookie.name==='fixture-login'&&cookie.value==='preserved'),startupVersion:startup.version};
+        return {states,softwareVisible,peak,authenticated,final,remainingTabs,visibilityWorker,items:queue.items,downloads:queue.downloads,cookiePreserved:cookies.some(cookie=>cookie.name==='fixture-login'&&cookie.value==='preserved'),startupVersion:startup.version};
       }finally{await browser.close();}
     },fixtures);
     assert(result.softwareVisible);assert.deepEqual(result.states.map(state=>state.hidden),[true,false,true]);
-    assert.equal(result.final.visible,0);assert.equal(result.peak,3);assert.equal(result.remainingTabs,1);assert(result.cookiePreserved);
+    assert.equal(result.final.visible,0);assert.equal(result.peak,3);assert.equal(result.remainingTabs,1);assert(result.cookiePreserved);assert.equal(result.visibilityWorker.processStarts,1);assert(result.visibilityWorker.requests>10);
     assert.equal(result.authenticated.length,3);assert(result.authenticated.every(Boolean));assert(result.items.every(item=>item.status==='done'),JSON.stringify(result.items));
     assert.equal(result.downloads.length,3);
     for(const download of result.downloads){
@@ -79,7 +79,7 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
     assert.equal(JSON.parse(await fs.readFile(path.join(data,'code-updates','active.json'),'utf8')).pending,false);
     await assert.rejects(fs.access(path.join(data,'code-updates','booting.json')),{code:'ENOENT'});
     await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/code-update-windows.png'});
-    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,loginPreserved:true,softwareVisible:true});
+    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,loginPreserved:true,softwareVisible:true,visibilityWorker:result.visibilityWorker});
     console.log('PASS: existing Windows EXE applied only new code, hid Chromium without hiding the software, shared login across three concurrent product tabs and kept every size-specific cost isolated.');
   }catch(error){audit.status='failed';audit.error={message:error.message,stack:error.stack};throw error;}
   finally{await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/code-update.json',JSON.stringify(audit,null,2)+'\n');if(instance)await instance.close().catch(()=>{});await fs.rm(data,{recursive:true,force:true,maxRetries:10,retryDelay:300}).catch(()=>{});}

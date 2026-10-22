@@ -4,7 +4,9 @@ Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more 
 
 ## Install on Windows
 
-New installations: download [AliExpress-Product-Archiver-1.4.3-Setup.exe](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe), then apply the **1.4.4 small update** through Settings. Existing users need only the small update, not another installer. Requires Windows 10/11 x64. Chromium is included; no Node.js or separate browser download is needed.
+Existing installations: apply the **1.4.5 small update** through Settings. It redesigns the workspace and improves rendering/window-control overhead without downloading the runtime again.
+
+New installations can use the optional **1.4.5 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.
@@ -15,7 +17,9 @@ New installations: download [AliExpress-Product-Archiver-1.4.3-Setup.exe](https:
 
 **Roman Urdu:** Setup install karein, Chromium mein login karein, folder choose karke links paste karein aur Run karein. Har product ki ZIP mein sirf **product.xlsx** aur **Images/** hongay; CSV nahi banegi. Excel ki Variations sheet mein variation name ke saath uski apni confirmed price hogi.
 
-The top Features strip lists Excel-only exports, variation names/prices, JPEG photos, bulk links and background processing.
+The compact workspace has responsive navigation, live queue activity, searchable/sortable Downloads, grid/list views and incremental history loading. Lightweight CSS transitions respect the system's reduced-motion setting. The desktop window can be resized down to 380 pixels; the layout is separately checked down to 360 pixels.
+
+Unchanged archive cards, photos and open previews are reused during progress updates. Hidden views are not rebuilt, and bursts of notifications are coalesced. Windows browser controls reuse one native helper rather than starting/compiling PowerShell for each command; it still verifies Chromium's process identity, and closes with the browser. Visible-price settling/confirmation waits and source-image quality are unchanged. These optimizations do not promise a fixed speedup for live pages or slow networks.
 
 The installer is unsigned. Settings, login profile and archive history stay under your Windows user account. Exported product ZIPs are saved to your chosen folder.
 
@@ -81,7 +85,9 @@ bash scripts/test-ui-linux.sh
 
 Unit tests cover extraction, visible prices, blank/stale prices, JPEG decoding, size/cost filenames, Excel-only archives, concurrency, pause/verification, history deletion and verified updates. The desktop batch checks 31 workbooks and 372 size-cost JPEG files, then clears history during a paused active run and verifies queued processing continues without deleting ZIPs. Controlled fixtures supply remote content; production extraction, queue and archive code run unchanged. `node test/records.e2e.js` separately checks deletion cancellation, restart persistence and preservation of exports, pending products, unsent links, settings and browser profile.
 
-The **Small Windows code update** workflow reuses the checksum-verified released 1.4.3 runtime. It runs source desktop/unit tests and `test/code-update.e2e.js`, applies the exact new code ZIP through the existing EXE updater, then checks native hide/show, a visible software window, three overlapping product tabs with different size prices and persistent shared login. Only the small ZIP, manifest, checksums and acceptance report are published. No new installer is built for this update.
+The **Small Windows code update** workflow reuses the checksum-verified released 1.4.3 runtime to test compatibility. It runs source desktop/unit tests and `test/code-update.e2e.js`, applies the exact new code ZIP through the existing EXE updater, then checks native hide/show, one reusable window helper, a visible software window, three overlapping product tabs with different size prices and persistent shared login. It additionally builds the optional smaller Lite Setup and tests actual installation, launch, external pinned browser-cache use and uninstall. The test seeds that cache from the verified release; it does not claim a live first-browser download.
+
+`node test/layout.e2e.js` checks all four screens at 360/390/520/768/1024/1440 pixels, search, sorting, grid/list modes, pagination and stable archive-path actions. With 2,000 fixture records and 500 coalesced progress notifications, it asserts no download-card child rebuilding, retained photo identity and an open preview. Timings are machine-dependent; the report records actual observed milliseconds rather than a fixed percentage performance claim. The source-only UI adds no web framework or external fonts; only 38 selected, licensed Lucide icons are bundled.
 
 ## Build and test Windows
 
@@ -100,6 +106,8 @@ npm run build:update
 npm exec -- electron-builder --win nsis --x64 --prepackaged dist/win-unpacked --publish never
 node test/installer.e2e.js
 ```
+
+For the smaller installer, use `npm run build:win:lite` instead of the full browser-bundling build. It outputs `dist-lite/*-Lite-Setup.exe` and excludes the Chromium extra resource. Browser installation uses the pinned headed browser without downloading the unused headless shell. `npm run build:icons` regenerates the checked-in small icon sprite from the development-only icon package.
 
 Use `E2E_BUNDLED=1` for the desktop test to exercise the shipped browser; set it in your shell before running that test. `npm run build:win` downloads the pinned Windows Chromium and builds Setup directly. Browser binaries are generated resources, not committed to Git.
 

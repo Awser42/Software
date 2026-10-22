@@ -1,6 +1,6 @@
 {
   "name": "aliexpress-product-archiver",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "Desktop product archive tool with manual Chromium sign-in",
   "main": "src/bootstrap.js",
   "private": true,
@@ -12,6 +12,8 @@
     "browser:install": "playwright install chromium",
     "bundle:chromium": "node scripts/bundle-chromium.js",
     "build:update": "node scripts/build-update.js",
+    "build:icons": "node scripts/build-icons.js",
+    "build:win:lite": "node scripts/build-lite.js",
     "build:win": "npm run bundle:chromium && electron-builder --win nsis --x64 --publish never",
     "build:linux": "electron-builder --linux dir"
   },
@@ -22,6 +24,7 @@
   "devDependencies": {
     "electron": "44.9.3",
     "electron-builder": "26.15.3",
+    "lucide-static": "1.61.0",
     "yauzl": "3.4.0"
   },
   "build": {

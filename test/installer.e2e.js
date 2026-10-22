@@ -32,7 +32,7 @@ async function registration(){const text=await run('powershell.exe',['-NoProfile
   const buttonProcess=buttonApp.process();
   try{
    const page=await buttonApp.firstWindow();await page.waitForSelector('.link-url');
-   assert.equal(await page.locator('.feature-strip').isVisible(),true);
+   assert.equal(await page.locator('.app-header').isVisible(),true);
    await buttonApp.evaluate(()=>{const childProcess=process.mainModule.require('node:child_process');const original=childProcess.spawn;childProcess.spawn=(file,args,options)=>{if(!file.endsWith('Uninstall AliExpress Product Archiver.exe'))throw new Error('Unexpected uninstall target');if(JSON.stringify(args)!==JSON.stringify(['/currentuser']))throw new Error('Unexpected product uninstall arguments');return original(file,[...args,'/S'],options);};});
    await page.locator('[data-tab="settings"]').click();
    await page.locator('#manageInstallation').click();
