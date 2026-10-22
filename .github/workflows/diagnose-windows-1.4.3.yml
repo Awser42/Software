@@ -21,7 +21,7 @@ jobs:
           node <<'JS'
           const fs=require('node:fs');
           const job=JSON.parse(fs.readFileSync('/tmp/job.json','utf8'));
-          const report={run:39710798024,status:job.status,steps:job.steps.map(step=>({name:step.name,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
+          const report={run:39710798024,snapshot:new Date().toISOString(),status:job.status,started:job.started_at,steps:job.steps.map(step=>({name:step.name,status:step.status,started:step.started_at,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
           fs.mkdirSync('validation/diagnostics',{recursive:true});
           fs.writeFileSync('validation/diagnostics/1.4.4-code-update-summary.json',JSON.stringify(report,null,2)+'\n');
           JS
