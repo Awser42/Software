@@ -1,4 +1,4 @@
-name: Inspect Windows 1.4.3 installer acceptance
+name: Inspect small Windows update acceptance
 on:
   push:
     branches: [diagnostics/windows-1.4.3]
@@ -12,25 +12,21 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: practical-test-evidence
-          path: evidence
-          github-token: ${{ github.token }}
-          run-id: 39704726868
-      - name: Save the synthetic installer test failure summary
+      - name: Read synthetic Windows test failure
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh api repos/Awser42/Software/actions/jobs/119599425334 > /tmp/job.json
+          gh run view 39710179962 --repo Awser42/Software --log-failed > /tmp/failure.log
           node <<'JS'
           const fs=require('node:fs');
-          const audit=JSON.parse(fs.readFileSync('evidence/installer.json','utf8'));
-          const message=String(audit.error?.message||'').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-12000);
-          const failure=fs.existsSync('evidence/packaged-failure.json')?JSON.parse(fs.readFileSync('evidence/packaged-failure.json','utf8')):null;
-          const report={run:39704726868,version:audit.version,status:audit.status,stages:audit.stages?.map(stage=>stage.name),sourceVerified:audit.sourceVerified,error:message,packagedFailure:failure?{stage:failure.stage,error:failure.error,processOutput:failure.processOutput?.slice(-8000),windowText:failure.windowText?.slice(0,3000),windowDiagnostic:failure.windowDiagnostic}:null};
+          const job=JSON.parse(fs.readFileSync('/tmp/job.json','utf8'));
+          const report={run:39710179962,steps:job.steps.map(step=>({name:step.name,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
           fs.mkdirSync('validation/diagnostics',{recursive:true});
-          fs.writeFileSync('validation/diagnostics/1.4.3-installer-retry-summary.json',JSON.stringify(report,null,2)+'\n');
+          fs.writeFileSync('validation/diagnostics/1.4.4-code-update-summary.json',JSON.stringify(report,null,2)+'\n');
           JS
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add validation/diagnostics/1.4.3-installer-retry-summary.json
-          git commit -m 'Record synthetic installer acceptance failure summary [skip ci]'
+          git add validation/diagnostics/1.4.4-code-update-summary.json
+          git commit -m 'Record synthetic code update failure summary [skip ci]'
           git push origin HEAD:diagnostics/windows-1.4.3
