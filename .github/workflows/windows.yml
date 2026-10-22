@@ -42,35 +42,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $source = '6a646d4575d61212b7c7f6daa0f459597be096d0'
-          git diff --quiet $source HEAD -- src package.json package-lock.json scripts/bundle-chromium.js scripts/build-update.js test/ui.e2e.js test/electron-harness.js test/fixtures.js test/workbook.js test/packaged.e2e.js
+          $source = 'd8dd9e2020269b9e79187e5a8eae919d575f2f6d'
+          # The installed EXE runs test/packaged.e2e.js again below, including its navigation timeout correction.
+          git diff --quiet $source HEAD -- src package.json package-lock.json scripts/bundle-chromium.js scripts/build-update.js test/ui.e2e.js test/electron-harness.js test/fixtures.js test/workbook.js
           if ($LASTEXITCODE -ne 0) { 'reuse=false' >> $env:GITHUB_OUTPUT; exit 0 }
-          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39603769467" | ConvertFrom-Json
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39703299290" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $run.head_sha -ne $source) { throw 'Source-matched run could not be verified.' }
-          $job = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/119234608178" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $job.run_id -ne 39603769467) { throw 'Source-matched Windows job could not be verified.' }
+          $job = gh api "repos/$env:GITHUB_REPOSITORY/actions/jobs/119577342135" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $job.run_id -ne 39703299290) { throw 'Source-matched Windows job could not be verified.' }
           $required = @('Unit and Excel archive tests','Verify browser bytes and packaged runtime source','Practical desktop Excel-only test with 30-product batch','Test packaged Windows EXE visible price and Excel JPEG export','Build verified small app update without Chromium or Electron','Create Windows Setup installer with uninstall support')
           foreach ($name in $required) {
             if (@($job.steps | Where-Object { $_.name -eq $name -and $_.conclusion -eq 'success' }).Count -ne 1) { throw "Completed Windows evidence is missing: $name" }
           }
-          $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39603769467/artifacts" | ConvertFrom-Json
+          $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/39703299290/artifacts" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or @($artifacts.artifacts | Where-Object { $_.name -eq 'AliExpress-Windows-Setup-Chromium-included' -and -not $_.expired -and $_.size_in_bytes -gt 1000000 }).Count -ne 1) { throw 'Completed Setup artifact could not be verified.' }
           'reuse=true' >> $env:GITHUB_OUTPUT
-          'Unchanged app/runtime/browser/fixture inputs retain the completed fresh 30-product batch and source-matched Setup artifact from https://github.com/Awser42/Software/actions/runs/39603769467. This run rechecks installed source/browser bytes, installed export/update behavior and actual registration/uninstall with the corrected post-exit process observation in the uninstall test.' >> $env:GITHUB_STEP_SUMMARY
+          'Unchanged app/runtime/browser/fixture inputs retain the completed fresh 30-product batch, 217 JPEG checks and source-matched Setup artifact from https://github.com/Awser42/Software/actions/runs/39703299290. That run completed packaging and its standalone EXE test; installed acceptance hit a 10-second fixture navigation timeout. This run repeats all unit tests and actual installation, installed source/browser verification, the complete installed export/update test with a 60-second navigation allowance, registration and uninstall acceptance.' >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/download-artifact@v4
         if: steps.previous.outputs.reuse == 'true'
         with:
           name: AliExpress-Windows-Setup-Chromium-included
           path: dist
           github-token: ${{ github.token }}
-          run-id: 39603769467
+          run-id: 39703299290
       - uses: actions/download-artifact@v4
         if: steps.previous.outputs.reuse == 'true'
         with:
           name: practical-test-evidence
           path: test-results
           github-token: ${{ github.token }}
-          run-id: 39603769467
+          run-id: 39703299290
       - name: Download pinned Windows Chromium
         if: steps.previous.outputs.reuse != 'true'
         run: npm run bundle:chromium
@@ -196,7 +197,7 @@ jobs:
 
           Native Windows distribution verification: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Tested source: $TESTED_COMMIT
-          This release is published only after the Windows unit, source desktop, packaged EXE and actual installer acceptance job succeeds. The updated 30-product fixture test checks 31 workbooks and 217 JPEG files, including each size-specific price filename. Installer acceptance checks installed source/browser bytes, export and small-update startup, registry registration and the actual in-app uninstall button with separate exports preserved. The native test appends the vendor /S option to automate uninstall confirmation; the normal app opens the standard confirmation window. Record-deletion cancellation, restart persistence and preservation of ZIP files, settings and browser profile were separately exercised through the actual source desktop app on Linux.
+          This release is published only after the Windows acceptance job succeeds. The source-matched 30-product fixture batch from https://github.com/$GH_REPO/actions/runs/39703299290 checks 31 workbooks and 217 JPEG files, including each size-specific price filename. Its completed source, browser, batch and Setup evidence is retained only after exact application inputs and authenticated successful step records are verified. The final run repeats all unit tests, actual installation, installed source/browser verification, the full installed EXE export/small-update test and unregister/uninstall acceptance. The native test appends the vendor /S option to automate uninstall confirmation; the normal app opens the standard confirmation window. Record-deletion cancellation, restart persistence and preservation of ZIP files, settings and browser profile were separately exercised through the actual source desktop app on Linux.
 
           Login and CAPTCHA are manual. Missing values are never invented. Fixtures do not establish your live account prices; see Live-product-check.json for the separate anonymous result. The installer is unsigned.
           TEXT

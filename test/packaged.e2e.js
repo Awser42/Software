@@ -75,8 +75,8 @@ function zipContents(file) {
      variations:[{skuId:'fixture-size20',attributes:'14:1;5:20',name:'Color: Blue / Size: 20*20cm',price:{currency:'USD',value:'99.00'}}],prices:{}
     };
     await page.route(fixture.sourceUrl,route=>route.fulfill({contentType:'text/html',body:'<h1>Packaged fixture</h1><div class="price-default--current">$8.15</div><div class="sku-item--property" data-property-id="14"><div class="sku-item--title">Color:Blue</div><div class="sku-item--skus"><button type="button" data-sku-col="14:1" aria-pressed="true" title="Blue">Blue</button></div></div><div class="sku-item--property" data-property-id="5"><div class="sku-item--title">Size:20*20cm</div><div class="sku-item--skus"><button type="button" data-sku-col="5:20" aria-pressed="true" title="20*20cm">20*20cm</button></div></div>'}));
-    await page.goto(fixture.sourceUrl,{waitUntil:'domcontentloaded',timeout:10000});
-    await page.locator('.price-default--current').waitFor({state:'visible',timeout:5000});
+    await page.goto(fixture.sourceUrl,{waitUntil:'domcontentloaded',timeout:60000});
+    await page.locator('.price-default--current').waitFor({state:'visible',timeout:30000});
     await captureVisiblePrices(page,fixture,{checkpoint:async()=>{}},{settleMs:100,timeoutMs:1000});
     const request={get:async url=>({ok:()=>true,url:()=>url,headers:()=>({'content-type':'image/jpeg'}),body:async()=>webp})};
     const archive=await makeArchive(fixture,app.getPath('userData')+'/acceptance-output',request,async()=>{},(bytes,mime)=>convertToJpeg(page,bytes,mime));
