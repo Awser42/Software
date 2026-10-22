@@ -17,19 +17,20 @@ jobs:
           name: practical-test-evidence
           path: evidence
           github-token: ${{ github.token }}
-          run-id: 39703299290
+          run-id: 39704726868
       - name: Save the synthetic installer test failure summary
         run: |
           node <<'JS'
           const fs=require('node:fs');
           const audit=JSON.parse(fs.readFileSync('evidence/installer.json','utf8'));
           const message=String(audit.error?.message||'').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-12000);
-          const report={run:39703299290,version:audit.version,status:audit.status,stages:audit.stages?.map(stage=>stage.name),sourceVerified:audit.sourceVerified,error:message};
+          const failure=fs.existsSync('evidence/packaged-failure.json')?JSON.parse(fs.readFileSync('evidence/packaged-failure.json','utf8')):null;
+          const report={run:39704726868,version:audit.version,status:audit.status,stages:audit.stages?.map(stage=>stage.name),sourceVerified:audit.sourceVerified,error:message,packagedFailure:failure?{stage:failure.stage,error:failure.error,processOutput:failure.processOutput?.slice(-8000),windowText:failure.windowText?.slice(0,3000),windowDiagnostic:failure.windowDiagnostic}:null};
           fs.mkdirSync('validation/diagnostics',{recursive:true});
-          fs.writeFileSync('validation/diagnostics/1.4.3-installer-summary.json',JSON.stringify(report,null,2)+'\n');
+          fs.writeFileSync('validation/diagnostics/1.4.3-installer-retry-summary.json',JSON.stringify(report,null,2)+'\n');
           JS
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add validation/diagnostics/1.4.3-installer-summary.json
+          git add validation/diagnostics/1.4.3-installer-retry-summary.json
           git commit -m 'Record synthetic installer acceptance failure summary [skip ci]'
           git push origin HEAD:diagnostics/windows-1.4.3
