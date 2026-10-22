@@ -21,6 +21,9 @@ class Browser {
     } finally {await session.detach();}
   }
   async visibility() {return this.windowVisibility(await this.browserProcessId(),'inspect');}
+  async keepHidden() {
+    if(this.platform==='win32'&&this.hidden&&!await this.setWindowVisibility(false))throw new Error('Chromium could not stay hidden. Try Hide Chromium again.');
+  }
   async newProductPage() {
     const session=await this.context.browser().newBrowserCDPSession();
     let resolveTarget;
@@ -75,6 +78,7 @@ class Browser {
       this.page=this.context.pages()[0] || await this.context.newPage();
       if(!await this.setWindowVisibility(show))throw new Error(`Chromium could not be ${show?'shown':'hidden'}. Try Show Chromium / Login again.`);
       await this.page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
+      await this.keepHidden();
       return this.page;
     })();
     try {return await this.opening;} finally {this.opening=null;}
@@ -84,6 +88,11 @@ class Browser {
     let session;
     try {
       if(this.platform==='win32') {
+        if(!show){
+          session=await this.context.newCDPSession(page);
+          const {windowId}=await session.send('Browser.getWindowForTarget');
+          await session.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'minimized'}});
+        }
         await this.windowVisibility(await this.browserProcessId(),show?'show':'hide');
         if(show)await page.bringToFront();
         this.hidden=!show;return true;
@@ -142,17 +151,20 @@ class Browser {
     };
     page.on('response',handler);
     try {
+      await this.keepHidden();
       let navError=null;
       try { await page.goto(item.url, {waitUntil:'domcontentloaded',timeout:60000}); } catch(e) {
         if(e.name!=='TimeoutError') throw new Error(`Product navigation failed: ${e.message}`);
         navError=e;
       }
+      await this.keepHidden();
       await page.waitForTimeout(settings.settleMs || 3000);
       let verificationEpoch=queue.verificationEpoch;
       for (let attempt=0; attempt<4; attempt++) {
         await queue.checkpoint();
         if(verificationEpoch!==queue.verificationEpoch){
           await page.goto(item.url,{waitUntil:'domcontentloaded',timeout:60000});
+          await this.keepHidden();
           await page.waitForTimeout(settings.settleMs||3000);verificationEpoch=queue.verificationEpoch;
         }
         if (await this.inspectGate(page)) {

@@ -7,12 +7,12 @@ test('a background minimize failure is reported without silently replacing the a
 test('Windows hides only the CDP-identified Chromium process and shows the verification tab',async()=>{
  const calls=[],primary={isClosed:()=>false,bringToFront:async()=>{throw new Error('Wrong tab');}},worker={isClosed:()=>false,bringToFront:async()=>calls.push('verification-tab')};
  const browser=new Browser('/unused',()=>{},{platform:'win32',windowVisibility:async(pid,action)=>{calls.push([pid,action]);return {hidden:action==='hide'};}});
- browser.page=primary;browser.context={browser:()=>({newBrowserCDPSession:async()=>({send:async()=>({processInfo:[{type:'renderer',id:9001},{type:'browser',id:9002}]}),detach:async()=>{}})})};
+ browser.page=primary;browser.context={newCDPSession:async()=>({send:async()=>({windowId:71}),detach:async()=>{}}),browser:()=>({newBrowserCDPSession:async()=>({send:async()=>({processInfo:[{type:'renderer',id:9001},{type:'browser',id:9002}]}),detach:async()=>{}})})};
  browser.attentionPages.set('product',worker);assert.equal(await browser.hide(),true);assert.equal(await browser.show(),worker);
  assert.deepEqual(calls,[[9002,'hide'],[9002,'show'],'verification-tab']);assert.equal(browser.page,primary);
 });
 test('Windows cannot target the software process or claim a failed hide succeeded',async()=>{
  const messages=[];const browser=new Browser('/unused',message=>messages.push(message),{platform:'win32',windowVisibility:async()=>{throw new Error('Must not run');}});
- browser.page={isClosed:()=>false};browser.context={browser:()=>({newBrowserCDPSession:async()=>({send:async()=>({processInfo:[{type:'browser',id:process.pid}]}),detach:async()=>{}})})};
+ browser.page={isClosed:()=>false};browser.context={newCDPSession:async()=>({send:async()=>({windowId:71}),detach:async()=>{}}),browser:()=>({newBrowserCDPSession:async()=>({send:async()=>({processInfo:[{type:'browser',id:process.pid}]}),detach:async()=>{}})})};
  browser.hidden=false;assert.equal(await browser.hide(),false);assert.equal(browser.hidden,false);assert(messages.some(message=>message.includes('identity')));
 });
