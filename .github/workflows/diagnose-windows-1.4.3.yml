@@ -1,0 +1,35 @@
+name: Inspect Windows 1.4.3 installer acceptance
+on:
+  push:
+    branches: [diagnostics/windows-1.4.3]
+    paths: [.github/workflows/diagnose-windows-1.4.3.yml]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: practical-test-evidence
+          path: evidence
+          github-token: ${{ github.token }}
+          run-id: 39703299290
+      - name: Save the synthetic installer test failure summary
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const audit=JSON.parse(fs.readFileSync('evidence/installer.json','utf8'));
+          const message=String(audit.error?.message||'').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-12000);
+          const report={run:39703299290,version:audit.version,status:audit.status,stages:audit.stages?.map(stage=>stage.name),sourceVerified:audit.sourceVerified,error:message};
+          fs.mkdirSync('validation/diagnostics',{recursive:true});
+          fs.writeFileSync('validation/diagnostics/1.4.3-installer-summary.json',JSON.stringify(report,null,2)+'\n');
+          JS
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add validation/diagnostics/1.4.3-installer-summary.json
+          git commit -m 'Record synthetic installer acceptance failure summary [skip ci]'
+          git push origin HEAD:diagnostics/windows-1.4.3
