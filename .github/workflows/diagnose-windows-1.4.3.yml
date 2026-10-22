@@ -16,12 +16,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/Awser42/Software/actions/jobs/119748159000 > /tmp/job.json
-          gh run view 39756038385 --repo Awser42/Software --log-failed > /tmp/failure.log || true
+          gh api repos/Awser42/Software/actions/jobs/119751408995 > /tmp/job.json
+          gh run view 39756998888 --repo Awser42/Software --log-failed > /tmp/failure.log || true
           node <<'JS'
           const fs=require('node:fs');
           const job=JSON.parse(fs.readFileSync('/tmp/job.json','utf8'));
-          const report={run:39756038385,snapshot:new Date().toISOString(),status:job.status,started:job.started_at,steps:job.steps.map(step=>({name:step.name,status:step.status,started:step.started_at,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
+          const report={run:39756998888,snapshot:new Date().toISOString(),status:job.status,started:job.started_at,steps:job.steps.map(step=>({name:step.name,status:step.status,started:step.started_at,conclusion:step.conclusion})),failure:fs.readFileSync('/tmp/failure.log','utf8').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').slice(-18000)};
           fs.mkdirSync('validation/diagnostics',{recursive:true});
           fs.writeFileSync('validation/diagnostics/1.4.7-code-update-summary.json',JSON.stringify(report,null,2)+'\n');
           JS
