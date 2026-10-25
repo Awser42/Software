@@ -33,13 +33,19 @@ const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleShe
 async function writeSpreadsheet(file, product, rows) {
   const details = [row(['Product details', 'Observed content'], 1, {height: 30, styles: [1, 1]})];
   const first = rows[0] || {};
-  for (const [label, value] of [['Title', product.title || ''], ['Product URL', product.sourceUrl || ''], ['Captured at', product.capturedAt || ''], ['Description', product.descriptionText || ''], ['Seller Description', product.sellerDescriptionText || ''], ['Features', first.Features || ''], ['Specifications', first.Specifications || '']]) {
+  for (const [label, value] of [['Title', product.title || ''], ['Product URL', product.sourceUrl || ''], ['Captured at', product.capturedAt || ''], ['Description', product.descriptionText || ''], ['Seller Description', product.sellerDescriptionText || ''], ['Features', first.Features || ''], ['Specifications', first.Specifications || ''],
+    ['Export format', 'product-xlsx-jpeg-v9'],
+    ['How to read variants', 'One Variant ID identifies one row option set within a product. Only confirmed-selected Option Status establishes that the complete combination was selected; catalog-only and unconfirmed-options rows do not establish availability. Join Variations, Image Map and image filenames by Variant ID. Design / Color, size and hoop/pack values are observed seller labels. Different designs may offer different sizes; never create a cross-product of the lists.'],
+    ['How to read prices', 'Use confirmed-visible prices for the exact row only. A blank price is unconfirmed. Product-level or catalog-unverified prices are not confirmed variation prices. Currency preserves the displayed code or symbol; a bare $ does not establish USD. Prices are session observations, not guaranteed checkout totals.'],
+    ['How to read images', 'matched means an image was associated with the selected options, not proof that a particular hoop or physical size is visible in the pixels. shared images are general product references copied for convenience, not proof of a selected design. reference images have no confirmed variant assignment. Do not infer size or price from image appearance or a shared photo. The Image Map records exact filenames and source URLs.'],
+    ['Missing values', 'Blank design, size or hoop means that field was not exposed as a selectable option. without hoop is a seller option, not a measurement of 0 cm. Options and Options JSON preserve every original option group, including groups not classified as design, size or hoop.'],
+    ['Capture warnings', (product.warnings || []).join('\n')]]) {
     for (const [index, part] of chunks(value, 1800, 20).entries()) {
       const count = Math.max(part.split('\n').length, Math.ceil(part.length / 110));
       details.push(row([index ? `${label} (continued ${index + 1})` : label, part], details.length + 1, {height: Math.min(409, Math.max(36, count * 16 + 12)), styles: [2, 0]}));
     }
   }
-  const columns = ['Variation', 'Price', 'Size', 'Color', 'Title', 'Images'];
+  const columns = ['Variation', 'Price', 'Size', 'Color', 'Title', 'Images', 'Product ID', 'Variant ID', 'Design ID', 'Design', 'Hoop / Pack', 'Currency', 'Price Status', 'Options', 'Options JSON', 'Matched Images', 'Shared Images', 'Option Status'];
   const variations = [row(columns, 1, {height: 30, styles: columns.map(() => 1)})];
   for (const item of rows) {
     // Very long image lists are continued on explicit rows instead of being
@@ -48,6 +54,12 @@ async function writeSpreadsheet(file, product, rows) {
     const count = Math.max(...parts.map(values => values.length));
     for (let index = 0; index < count; index++) variations.push(row(parts.map((values, col) => values[index] ?? (col === 0 ? '(continued)' : '')), variations.length + 1, {height: Math.min(409, Math.max(64, ...parts.map(values => Math.max((values[index] || '').split('\n').length, Math.ceil((values[index] || '').length / 45)) * 16 + 12))), styles: [2, 3, 0, 0, 0, 0]}));
   }
+  const imageColumns = ['File', 'Variant ID', 'Design ID', 'Design', 'Size', 'Hoop / Pack', 'Price', 'Price Status', 'Role', 'Source URLs', 'Option Status'];
+  const imageRows = [row(imageColumns, 1, {height:30, styles:imageColumns.map(() => 1)})];
+  for (const item of product.imageMap || []) {
+    const parts = imageColumns.map(key => chunks(item[key] || ''));
+    for (let index = 0; index < Math.max(...parts.map(values => values.length)); index++) imageRows.push(row(parts.map((values, col) => values[index] ?? (col === 0 ? '(continued)' : '')), imageRows.length + 1, {height:80}));
+  }
   const entries = {
     '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
     '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
@@ -55,8 +67,12 @@ async function writeSpreadsheet(file, product, rows) {
     'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
     'xl/styles.xml': styles,
     'xl/worksheets/sheet1.xml': sheet([26, 112], details),
-    'xl/worksheets/sheet2.xml': sheet([46, 20, 22, 22, 60, 64], variations, `A1:F${variations.length}`)
+    'xl/worksheets/sheet2.xml': sheet([46, 20, 22, 22, 60, 64, 24, 22, 22, 24, 26, 16, 24, 60, 72, 64, 64, 24], variations, `A1:R${variations.length}`),
+    'xl/worksheets/sheet3.xml': sheet([90, 22, 22, 24, 24, 26, 20, 24, 18, 90, 24], imageRows, `A1:K${imageRows.length}`)
   };
+  entries['[Content_Types].xml'] = entries['[Content_Types].xml'].replace('</Types>', '<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  entries['xl/workbook.xml'] = entries['xl/workbook.xml'].replace('</sheets>', '<sheet name="Image Map" sheetId="3" r:id="rId4"/></sheets>');
+  entries['xl/_rels/workbook.xml.rels'] = entries['xl/_rels/workbook.xml.rels'].replace('</Relationships>', '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/></Relationships>');
   await new Promise((resolve, reject) => {
     const stream = fs.createWriteStream(file, {flags: 'wx'});
     const zip = archiver('zip', {zlib: {level: 6}});

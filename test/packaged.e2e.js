@@ -86,7 +86,7 @@ function zipContents(file) {
    }finally{await browser.close();}
   });
   markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,nativeHidden:true},{hidden:false,nativeHidden:false},{hidden:true,nativeHidden:true}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v8');
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v9');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);
@@ -94,7 +94,7 @@ function zipContents(file) {
   assert.equal(files.length,2);const imageFile=files.find(name=>name.startsWith('Images/'));assert.match(imageFile,/variation-.*Size-20_20cm.*-cost-\$8\.15-/);assert(files.includes('product.xlsx'));
   assert(Object.keys(entries).every(name=>name==='product.xlsx'||name==='Images/'||/^Images\/[^/]+\.jpg$/.test(name)));
   const rows=await workbookTable(entries['product.xlsx']);
-  assert.deepEqual(rows,[columns,[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,imageFile]]);
+  assert.deepEqual(rows[0],columns);assert.equal(rows.length,2);assert.deepEqual(rows[1].slice(0,10),[result.expected.title,'Color: Blue / Size: 20*20cm','$8.15','20*20cm','Blue',result.expected.description,result.expected.seller,result.expected.features,result.expected.specs,imageFile]);const exported=Object.fromEntries(columns.map((key,index)=>[key,rows[1][index]]));assert.equal(exported.Design,'Blue');assert.equal(exported['Price Status'],'confirmed-visible');assert.equal(exported['Option Status'],'confirmed-selected');assert.match(exported['Variant ID'],/^V[a-f0-9]{12}$/);assert(imageFile.includes(exported['Variant ID']));
   const jpeg=entries[files[0]];assert.equal(jpeg.readUInt16BE(0),0xffd8);
   const decoded=await app.evaluate(({nativeImage},base64)=>{
    const image=nativeImage.createFromBuffer(Buffer.from(base64,'base64'));

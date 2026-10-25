@@ -1,0 +1,10 @@
+Attached product.xlsx aur Images ko use karke product ke designs, sizes/hoop options aur prices ki table banao.
+
+Har Variant ID ko us row ke option set ki alag pehchan samjho. Design ID ek hi design ke mukhtalif sizes ko jorta hai.
+Sirf Option Status confirmed-selected ko selected complete combination samjho, aur Price Status confirmed-visible ki price usi row ke liye use karo.
+Ek design ke sizes ya prices doosre design ko assign na karo. Barabar price hone par bhi mukhtalif designs/Variant IDs ko merge na karo.
+Variations ke Matched Images aur Image Map ke matched role se tasveer ka jor dekho. shared/reference photos ko aam product reference samjho, selected design, actual dimensions ya included hoop ka saboot nahi.
+Image filenames mein wohi Variant ID/Design ID aur us row ki cost maujood hai. Exact options ke liye Options/Options JSON parho.
+Blank price/size ko unknown rakho; missing data guess na karo. without hoop ko 0 cm physical size na banao. Currency ko usi code/symbol mein rakho, conversion assume na karo.
+Product Details ke Capture warnings aur reading instructions bhi dekho. Catalog-only rows availability confirm nahi kartin. Safety-limit warning ho to complete catalog ka dawa na karo.
+Final table mein Design, Size, Hoop/Pack, Price, Currency, Variant ID aur matching image filenames dikhao.

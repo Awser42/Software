@@ -1,6 +1,14 @@
 # Commercial Readiness Review
 
-Version: 1.4.7. Scope: Windows x64 desktop product archiving, not a commercial certification or penetration test. Controlled fixtures are not evidence of live-account prices or permission to use merchant content.
+Version: 1.4.8. Scope: Windows x64 desktop product archiving, not a commercial certification or penetration test. Controlled fixtures are not evidence of live-account prices or permission to use merchant content.
+
+## 1.4.8 export changes
+
+- Stable product-scoped Variant IDs and Design IDs link observed option combinations to Excel rows and JPEG filenames. Full original options, confirmation status and currency markers are explicit.
+- A third Image Map sheet records image roles and original sources. Known photos of other designs are excluded from a variant; generic shared/reference media is labelled and is not treated as proof of a physical size or included hoop.
+- Design-dependent size lists are explored even when the initial catalog appears complete. Required choices cleared by a design change are selected from enabled controls and freshly priced before recording.
+- Controlled screenshot-shaped tests exercise C1 without hoop at $5.25 and with 20cm hoop at $6.89, equal prices across different designs, changing size lists, source-image isolation, stable identities and unconfirmed catalog rows. These are fixture tests; other prices in those fixtures are synthetic.
+- Native Windows installation/live-account results recorded for earlier releases do not establish native Windows acceptance for this local build. See the supplied build/check results for this version.
 
 ## Fixed And Covered
 

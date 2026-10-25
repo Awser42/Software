@@ -1,5 +1,5 @@
 // Local, deterministic product content; no fixture value is claimed as live AliExpress data.
-const columns=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
+const columns=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images','Product ID','Variant ID','Design ID','Design','Hoop / Pack','Currency','Price Status','Options','Options JSON','Matched Images','Shared Images','Option Status'];
 const title='1pc 20X20CM/15X15CM 7.87/6.3inch Animal - Dragonfly Embroidery Starter Kit DIY Kit DIY Embroidery Kit Manualidades';
 const points=[
  ['Perfect for beginners and hobbyists','This 1pc DIY Embroidery Starter Kit is ideal for those new to embroidery. It includes all essentials for creating beautiful designs with minimal setup and maximum creativity.'],

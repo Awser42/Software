@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           VERSION=$(node -p 'require("./package.json").version')
-          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .peakTabs == 3 and .distinctProductPrices and .hoopCombinations == 12 and .distinctHoopPrices and .browserSandbox and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
+          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .exportFormat == "product-xlsx-jpeg-v9" and .variantIdentities and .imageMapping and .peakTabs == 3 and .distinctProductPrices and .hoopCombinations == 12 and .distinctHoopPrices and .browserSandbox and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
           jq -e '.metadata.vulnerabilities.total == 0' evidence/dependency-audit.json
           jq -e '.status == "passed" and .benchmark.nodeReused and .benchmark.imageReused and .benchmark.previewOpen and .benchmark.mutations == 0' evidence/layout-performance.json
           jq -e '.status == "passed" and .noBundledChromium and .externalCache and .installedLaunch and .uninstalled' evidence/lite.json
@@ -118,6 +118,7 @@ jobs:
           cp evidence/failed-links.json download/Failed-links-check.json
           cp evidence/dependency-audit.json download/Dependency-audit.json
           cp COMMERCIAL-READINESS.md download/Commercial-readiness.md
+          cp docs/AI-EXPORT-ROMAN-URDU.txt download/AI-EXPORT-ROMAN-URDU.txt
           cp evidence/failed-links-desktop.png download/Failed-links-desktop.png
           cp evidence/failed-links-small.png download/Failed-links-small.png
           cp evidence/redesign-1440.png download/UI-desktop-preview.png
@@ -126,38 +127,20 @@ jobs:
           LITE_BYTES=$(jq -r .bytes evidence/lite.json)
           (cd download && sha256sum *-Code-update.zip *-Lite-Setup.exe update-manifest.json > SHA256SUMS.txt)
           cat > notes.md <<TEXT
-          Complete observed design/size/hoop prices, safer saved history and commercial-use reliability/security hardening.
+          Each design and its own size/hoop option now keep a separate identity, visible price and matching photos.
 
-          Apply through Settings > Check for updates > Download small update > Restart to apply. Confirm version $VERSION in the software header. Do not extract this ZIP over the EXE.
+          Update the installed software through **Settings > Check for updates > Download small update > Restart to apply**. Finish the active queue first and confirm **Version $VERSION** in the header. Chromium, settings, login and earlier ZIPs are kept. Do not extract the code ZIP over the EXE.
 
-          Existing users: use the small code update only. Your installed browser/runtime, archives, login and settings are kept. No new installer is required.
+          Excel Variations adds Design, Size, Hoop/Pack, stable Variant ID and Design ID, full original options and confirmation status. Image Map joins filenames to the same combination, price, image role and source URLs. JPEG names include those IDs, observed options and confirmed cost. Equal prices do not merge different designs. Known photos of another design are excluded; generic photos are labelled shared references. Blank prices remain unconfirmed. A design change can reveal a different size list or clear a required selection; those real enabled controls are explored and freshly priced. Capture limits warn when additional combinations may remain.
 
-          Incomplete catalog responses no longer limit pricing to one size or hoop per design. The software explores actual enabled page choices, confirms each complete combination and records its own current visible price, options and matching cost-labelled photos. One design with three hoop options has three independent prices; a tested four-design/three-hoop product exports 12 matching rows. A separate three-group regression checks 24 design/physical-size/hoop prices. Already visited combinations are not repeatedly selected. Disabled combinations and unconfirmed amounts are not invented. Stale selected-SKU markers cannot override visible selected options. Bounded discovery warns explicitly if additional combinations remain. Re-add earlier links to capture the new v8 format; existing ZIPs are kept.
+          **Add earlier links again** to create the new v9 format. Old ZIP files are kept. Give product.xlsx and Images together to the next AI/tool; AI-EXPORT-ROMAN-URDU.txt includes a ready handoff prompt.
 
-          History writes are flushed before atomic replacement and mirrored to a local backup, including record deletions. Corrupt primary history recovers from a valid backup and preserves the damaged bytes; unrecoverable history stops startup with a visible error instead of silently resetting. Disk-write errors no longer leave the run locked or falsely consume an unstarted attempt. Output-folder failures appear as errors and can be corrected and retried. Folder changes are blocked during processing. Chromium requests its sandbox on Windows, and response collection checks real HTTPS AliExpress hostnames with bounded pending JSON captures. Runtime and build npm audits must report zero known vulnerabilities; the build-only proxy dependency was updated without changing the installed runtime dependencies, with actual proxy-forwarding regression coverage.
+          This exact code ZIP passed native Windows acceptance on the released 1.4.3 EXE, including variant IDs, Image Map, different design/size prices, three tabs, browser controls and persistent login. Source desktop checks cover 31 workbooks and 372 JPEGs; separate checks cover history/failure recovery, responsive UI and actual Lite installation/startup/uninstall. Fixtures are controlled examples, not live-account price evidence. The dependency audit reports zero known advisories. The Lite browser cache is seeded for acceptance; a live first-browser download was not verified. Installers remain unsigned.
 
-          Commercial-readiness.md records the audit scope and remaining gates. This is not a claim of complete commercial certification: installer code signing, real-account/live catalog acceptance, site/media usage rights, privacy/support terms and deployment-specific backup/recovery remain release-owner responsibilities. No live first-browser download or checkout-price guarantee is claimed.
-
-          Failed Links has a live count, searchable URLs and error reasons, attempt counts, failure time, individual retry/copy/remove, Retry all, Copy all and native text-file export. Previously saved failed records appear automatically after updating. Retrying a link returns it to Progress; success removes it from Failed Links, while another failure returns it with the latest reason and attempt count. Retry is available after the current run finishes. Removal defaults to Cancel and uses stable record IDs. Links persist across restart; Downloads history clearing and clearing completed queue entries leave Failed Links intact. This is an in-app folder; ZIP files are never moved or deleted. Export creates a user-chosen text file with one URL per line.
-
-          Optional Lite Setup is $LITE_BYTES bytes, $LITE_PERCENT percent smaller than the released 1.4.3 full installer. It omits bundled Chromium: the pinned browser downloads once on first use and stays in the user profile. This reduces installer size, not the total space required after that browser download. Lite is best for a new installation; existing users should use the small update.
-
-          Bulk Links, Progress, Downloads, Failed Links and Settings have a compact responsive layout, local Lucide icons, keyboard focus states, icon tooltips and lightweight transitions with reduced-motion support. Downloads retains search, sorting, grid/list modes and incremental loading. All five panels fit tested widths from 360 to 1440 pixels; the desktop window can be resized down to 380 pixels.
-
-          Progress notifications are coalesced. Unchanged cards, photos and open previews are retained; hidden views are not rebuilt. The 2000-record rendering check processes 500 notifications without rebuilding download-card children. Windows hide/show commands reuse one verified native helper process instead of repeatedly starting and compiling PowerShell; browser process identity is checked and helper cleanup is tested. Price-confirmation waits and image quality have not been shortened to manufacture a speed claim.
-
-          Downloads history clearing and individual deletion still default to Cancel. ZIP files, queued/running products, settings and browser login are kept. The previous cost-dollar filenames, per-size confirmed prices and three isolated product tabs remain.
-
-          Photos now use cost-\$8.15 in their filenames. Every confirmed size gets its own cost-labelled photos and matching Excel references. US/USD amounts use the dollar sign; other observed currencies are not falsely converted. Unconfirmed prices remain absent. Recapture earlier products to get new names; existing ZIPs are untouched.
-
-          Hide Chromium targets only Chromium's own Windows process, fully hides its windows and leaves the software visible. Show Chromium restores the verification tab in the same login session. Hiding the software to its tray is a separate Settings command.
-
-          Three product tabs run concurrently by default, configurable from 1 to 4. Tabs share login but isolate product responses, options and prices. CAPTCHA/login remains manual and pauses processing until Continue.
-
-          Native Windows checks apply this exact ZIP to the existing released 1.4.3 EXE, verify hidden/shown Chromium with the software visible, and extract three products with different size prices and a shared persistent login. Source desktop tests additionally verify 31 Excel workbooks and 372 JPEGs, plus clearing history during a paused active run. Separate real desktop failure-folder checks cover automatic separation, restart persistence, actual clipboard text, export cancellation and file contents, isolated retry, repeated failure, confirmed removal and ZIP preservation. Actual Lite Setup installation, startup, persistent external browser-cache use and uninstall are also tested. The Lite browser cache is seeded from the checksum-verified existing runtime for acceptance; no live first-download execution is claimed. Fixtures are not a claim about live account prices.
+          New installations may use the optional Lite Setup: $LITE_BYTES bytes, $LITE_PERCENT percent smaller than the earlier full 1.4.3 installer. It downloads pinned Chromium on first use. Existing users should use the small update.
 
           Verified source: $TESTED_SHA
           Windows acceptance: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
-          Full installer for new installations only: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
+          Full bundled base installer: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
           TEXT
-          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Design size and hoop prices with reliability fixes" --notes-file notes.md
+          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Explicit design, size and price mapping" --notes-file notes.md

@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,failureLimit=50,view='grid',lastLatest=null,lastRunError='';
-let updateState={status:'idle',currentVersion:'1.4.7',totalBytes:0,downloadedBytes:0,canRestart:false};
+let updateState={status:'idle',currentVersion:'1.4.8',totalBytes:0,downloadedBytes:0,canRestart:false};
 const downloadCache=new Map(),rowCache=new Map(),failureCache=new Map();
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
@@ -28,14 +28,14 @@ function dataPreview(data){
   if(seller){details.append(el('strong','Seller description'),el('p',seller,'data-preview-description'));if(data.sellerDescriptionTruncated)details.append(el('p','The seller preview is shortened. Open the exported file for the complete text.','data-preview-counts'));}
   if(!description&&!seller)details.append(el('p','Description was not captured. Show Chromium to check that the product description has loaded, then retry this product. Missing text has not been invented.','data-warning'));
   for(const [key,title] of [['featuresPreview','Features'],['specificationsPreview','Specifications']])if(data[key])details.append(el('strong',title),el('p',data[key],'data-preview-description'));
-  if(data.detailsPreview?.length){const wrap=el('div',null,'data-preview-table-wrap'),table=el('table',null,'data-preview-table'),head=el('thead'),header=el('tr'),body=el('tbody');for(const title of ['Variation','Price','Size','Color']){const cell=el('th',title);cell.scope='col';header.append(cell);}head.append(header);for(const row of data.detailsPreview.slice(0,5)){const tr=el('tr');for(const key of ['variation','price','size','color'])tr.append(el('td',row[key]??''));body.append(tr);}table.append(el('caption','First extracted variations · full list is in the exported files'),head,body);wrap.append(table);details.append(wrap);}
+  if(data.detailsPreview?.length){const wrap=el('div',null,'data-preview-table-wrap'),table=el('table',null,'data-preview-table'),head=el('thead'),header=el('tr'),body=el('tbody');for(const title of ['Design','Size / Hoop','Price','Variant ID']){const cell=el('th',title);cell.scope='col';header.append(cell);}head.append(header);for(const row of data.detailsPreview.slice(0,5)){const tr=el('tr');for(const key of ['design','size','price','variantId'])tr.append(el('td',row[key]??''));body.append(tr);}table.append(el('caption','First extracted variations · full list is in the exported files'),head,body);wrap.append(table);details.append(wrap);}
   return details;
 }
 function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`${(bytes/1024).toFixed(0)} KB`:`${(bytes/(1024*1024)).toFixed(1)} MB`;}
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.7'}`;$('runningVersion').textContent=u.currentVersion||'1.4.7';
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.8'}`;$('runningVersion').textContent=u.currentVersion||'1.4.8';
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -133,7 +133,7 @@ function renderFailures(){
 function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.preview?.length]);}
 function downloadCard(d){
   const card=el('article',null,'download-card'),actions=el('div',null,'download-actions'),preview=el('div',null,'preview'),body=el('div',null,'download-body');card.dataset.archivePath=d.path;
-  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v8'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
+  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v9'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
   const remove=command('','trash-2',async()=>{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);},'icon-button danger');
   remove.setAttribute('aria-label','Delete record');remove.dataset.tooltip='Delete record; keep ZIP';actions.append(el('span',badge,'badge'),remove);
   if(d.preview?.startsWith('data:image/')){const image=el('img');image.src=d.preview;image.alt=d.title||'Product image';image.decoding='async';image.loading='lazy';preview.append(image);}else preview.append(icon('image'));

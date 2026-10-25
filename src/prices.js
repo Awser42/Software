@@ -70,6 +70,12 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
       deadline+=Date.now()-pausedAt;
       const state=await readPriceState(page); checkPage(state);
       const selectionOK=onlyTarget?selectedTarget(state,onlyTarget):(!targets&&!skuId || matches(state,targets,skuId));
+      if(onlyTarget&&selectionOK&&state.groups.length&&!selectionTargets(state)){
+        // A new design may replace its size list and clear the selection. Wait
+        // for that change to finish, then choose only currently enabled sizes.
+        const repaired=await seedRequiredOptions();
+        return repaired&&selectedTarget(repaired,onlyTarget)?repaired:null;
+      }
       const fresh=!freshAfter || state.revision>0 || state.displayed!==freshAfter.displayed;
       if (selectionOK && fresh && state.displayed && !state.loading) {
         const key=JSON.stringify([state.displayed,state.groups.map(g=>g.values.filter(v=>v.selected).map(v=>[g.id,g.name,v.id,v.name]))]);
@@ -80,18 +86,18 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
     }
     return null;
   };
-  let initial=await waitStable();
-  let snapshot=initial || await readPriceState(page); checkPage(snapshot);
-  const beforeSeeding=snapshot;
+  const seedRequiredOptions=async()=>{
   // Some products require both Color and Size before exposing any price. Select
   // only real enabled controls, confirm every selection, then require a fresh
   // price for the complete selected state. Partial states never receive prices.
-  if(snapshot.groups.length&&!selectionTargets(snapshot)) {
     let lastBefore=null,failed=false;
-    for(let index=0;index<snapshot.groups.length;index++) {
+    // Bound reseeding even if a seller page keeps replacing required groups.
+    for(let index=0;index<16;index++) {
       await queue.checkpoint();await onGate();
+      try{await page.waitForLoadState('networkidle',{timeout:Math.max(timeoutMs,1500)});}catch{failed=true;break;}
       const current=await readPriceState(page);checkPage(current);
-      const group=current.groups[index];if(!group){failed=true;break;}
+      if(selectionTargets(current))break;
+      const group=current.groups.find(group=>group.values.filter(value=>value.selected&&!value.disabled).length!==1);if(!group){failed=true;break;}
       const selected=group.values.filter(value=>value.selected&&!value.disabled);
       if(selected.length===1)continue;
       if(selected.length>1){failed=true;break;}
@@ -111,9 +117,14 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
       await page.waitForTimeout(Math.max(150,settleMs));
     }
     const selected=await readPriceState(page);checkPage(selected);
-    if(!failed&&selectionTargets(selected))initial=await waitStable(selectionTargets(selected),null,lastBefore);
-    else initial=null;
-    snapshot=initial||selected;
+    return !failed&&selectionTargets(selected)?await waitStable(selectionTargets(selected),null,lastBefore):null;
+  };
+  let initial=await waitStable();
+  let snapshot=initial || await readPriceState(page); checkPage(snapshot);
+  const beforeSeeding=snapshot;
+  if(snapshot.groups.length&&!selectionTargets(snapshot)){
+    initial=await seedRequiredOptions();
+    snapshot=initial||await readPriceState(page);
   }
   product.prices.displayed=initial?.displayed||null;
   product.prices.displayedUnassigned=!!initial?.displayed;
@@ -175,12 +186,10 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
       product.prices.displayedUnassigned=false;
     }
   }
-  const mappedPlans=new Map();
-  for(const plan of plans){const key=mappedKey(plan);if(key===null)continue;if(!mappedPlans.has(key))mappedPlans.set(key,[]);mappedPlans.get(key).push(plan);}
-  // Catalog responses can expose only one size/pack per design. Use the visible
-  // choice count only to detect incomplete coverage, never to invent SKU rows.
-  const possibleSelections=snapshot.groups.reduce((count,group)=>count*new Set(group.values.map(value=>value.id||normalized(value.name))).size,1);
-  const discover=snapshot.groups.length>0&&mappedPlans.size<possibleSelections;
+  // A complete catalog for the initially selected design says nothing about
+  // sizes that appear only after selecting another design. Explore the actual
+  // UI even when the initial catalog appears complete.
+  const discover=snapshot.groups.length>0;
   try {
     if (discover && initial && selectionTargets(initial) && singlePrice(initial.displayed)) {
       // Walk the graph of real enabled UI choices. A candidate is never an
@@ -192,7 +201,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
         const key=selectionKey(targets); if (visited.has(key)) return false;
         if (visited.size>=limit) { limited=true; return false; }
         visited.add(key);
-        const existing=mappedPlans.get(key)||[],matching=existing.filter(plan=>matches(state,plan.targets,plan.variant.skuId));
+        const existing=plans.filter(plan=>matches(state,plan.targets,null)),matching=existing.filter(plan=>matches(state,plan.targets,plan.variant.skuId));
         let variant=matching.length===1?matching[0].variant:null;
         if(!existing.length){variant={skuId:state.selectedSkuId||null,name:null,attributes:null,price:null,displayedPrice:null};product.variations.push(variant);}
         if(variant){assignObservation(variant,state);if(key===selectionKey(selectionTargets(initial)))product.prices.displayedUnassigned=false;}

@@ -6,8 +6,10 @@ const crypto = require('node:crypto');
 const {imageQuality} = require('./media-quality');
 const {writeSpreadsheet} = require('./spreadsheet');
 const {readArchivePreview} = require('./archive-preview');
+const {variantMetadata, priceCurrency, optionKey} = require('./variant-metadata');
 
 const safeName = v => String(v || 'product').normalize('NFKC').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 110) || 'product';
+function filenamePart(value,limit){let result='';for(const character of safeName(value)){if(Buffer.byteLength(result+character)>limit)break;result+=character;}return result||'option';}
 function productKey(url) {
   const u = new URL(url);
   if (!/^https?:$/.test(u.protocol) || u.username || u.password) throw new Error('Use an HTTPS AliExpress product URL.');
@@ -50,9 +52,9 @@ function observedProductPrice(prices = {}) {
   }
   return '';
 }
-const EXPORT_FORMAT='product-xlsx-jpeg-v8';
+const EXPORT_FORMAT='product-xlsx-jpeg-v9';
 const filenameCost=value=>money(value).replace(/(?:US\s*\$|\bUSD\b\s*\$?)/gi,'$').replace(/\$\s+(?=\d)/g,'$');
-const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images'];
+const COLUMNS=['Title','Variation','Price','Size','Color','Description','Seller Description','Features','Specifications','Images','Product ID','Variant ID','Design ID','Design','Hoop / Pack','Currency','Price Status','Options','Options JSON','Matched Images','Shared Images','Option Status'];
 const lines=values=>[...new Set((values||[]).map(v=>typeof v==='string'?v.trim():[v?.name,v?.value].filter(x=>x!=null&&x!=='').join(': ').trim()).filter(Boolean))].join('\n');
 function variantOptions(product,variant) {
   if (variant?.observedOptions?.length) return variant.observedOptions;
@@ -75,31 +77,48 @@ function variantImageUrls(product,variant,options) {
   }
   return urls;
 }
-function rowImages(product,variant,options) {
+function rowImages(product,variant,options,role=null) {
   const assets=(product.assets||[]).filter(a=>a.status==='downloaded');
-  if (!variant) return [...new Set(assets.map(a=>a.file))].join('\n');
+  if (!variant) return role==='matched'?'':[...new Set(assets.map(a=>a.file))].join('\n');
   const variantIndex=(product.variations||[]).indexOf(variant);
   const urls=variantImageUrls(product,variant,options);
-  const matched=assets.filter(a=>a.variantIndex===variantIndex||(a.variantIndex==null&&urls.has(a.url)));
-  const common=assets.filter(a=>a.variantIndex==null&&(a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url)));
-  return [...new Set([...matched,...common].map(a=>a.file))].join('\n');
+  const selected=assets.filter(a=>a.variantIndex===variantIndex||(a.variantIndex==null&&urls.has(a.url)));
+  return [...new Set(selected.filter(a=>!role||a.imageRole===role).map(a=>a.file))].join('\n');
 }
 async function nameVariationImages(product,stage,files,checkpoint) {
   const assets=product.assets.filter(a=>a.status==='downloaded'),replacements=new Map();
+  // The gallery can contain photos of every design. A known C4 thumbnail must
+  // never be relabelled as C1 merely because it also appears in that gallery.
+  const owners=new Map();
+  for(const property of product.properties||[])for(const value of property.values||[])if(value.image){
+    if(!owners.has(value.image))owners.set(value.image,[]);
+    owners.get(value.image).push({name:property.name,propertyId:property.id,value:value.name,id:value.id});
+  }
+  for(const variant of product.variations||[])for(const option of variantOptions(product,variant))if(option.image){
+    if(!owners.has(option.image))owners.set(option.image,[]);owners.get(option.image).push(option);
+  }
   for (const [variantIndex,variant] of (product.variations||[]).entries()) {
     const options=variantOptions(product,variant),urls=variantImageUrls(product,variant,options);
-    if (!urls.size&&product.images?.[0]) urls.add(product.images[0]);
-    const sources=[...new Set(assets.filter(a=>urls.has(a.url)||a.kind!=='variation'||(product.images||[]).includes(a.url)||(product.descriptionImages||[]).includes(a.url)).map(a=>a.file))];
+    const metadata=variantMetadata(product,variant,options);
+    const selected=new Set(options.map(option=>JSON.stringify(optionKey(option))));
+    const eligible=assets.filter(asset=>{
+      const known=owners.get(asset.url)||[];
+      if(known.length)return known.some(option=>selected.has(JSON.stringify(optionKey(option))));
+      return urls.has(asset.url)||asset.kind!=='variation'||(product.images||[]).includes(asset.url)||(product.descriptionImages||[]).includes(asset.url);
+    });
+    const sources=[...new Set(eligible.map(a=>a.file))];
     const optionLimit=Math.max(8,Math.floor(100/Math.max(1,options.length))-1);
-    const label=safeName(options.map(o=>safeName([o.name,o.value].filter(Boolean).join('-')).slice(0,optionLimit)).join('-')||variant.name||variant.attributes||variant.skuId);
+    const label=filenamePart(options.map(o=>safeName([o.name,o.value].filter(Boolean).join('-')).slice(0,optionLimit)).join('-')||variant.name||variant.attributes||variant.skuId,100);
     const price=filenameCost(product.prices?.mode==='visible-variation'?variant.displayedPrice:variant.price);
     for (const [imageIndex,source] of sources.entries()) {
       await checkpoint();
-      const file=`Images/variation-${label}${price?`-cost-${safeName(price).slice(0,40)}`:''}-${variantIndex+1}-${String(imageIndex+1).padStart(3,'0')}.jpg`;
+      const imageRole=eligible.some(a=>a.file===source&&urls.has(a.url))?'matched':'shared';
+      const priceLabel=price?`-cost-${filenamePart(price,30)}${product.prices?.mode==='visible-variation'?'-confirmed':'-catalog-unverified'}`:'-price-unconfirmed';
+      const file=`Images/variation-${label}${priceLabel}-${metadata['Variant ID']}-${metadata['Design ID']||'design-unspecified'}-${imageRole}-${variantIndex+1}-${String(imageIndex+1).padStart(3,'0')}.jpg`;
       await fsp.copyFile(path.join(stage,source),path.join(stage,file),fs.constants.COPYFILE_EXCL);
       files.push(file);
       if (!replacements.has(source)) replacements.set(source,[]);
-      replacements.get(source).push({file,variantIndex});
+      replacements.get(source).push({file,variantIndex,imageRole});
     }
   }
   // A shared photo needs distinct names when observed sizes or prices differ.
@@ -108,6 +127,13 @@ async function nameVariationImages(product,stage,files,checkpoint) {
     files.splice(files.indexOf(source),1);
   }
   product.assets=product.assets.flatMap(asset=>replacements.has(asset.file)?replacements.get(asset.file).map(replacement=>({...asset,...replacement,kind:'variation'})):asset);
+  // Unused catalog thumbnails stay available as clearly marked references,
+  // without being associated with an unobserved design/size combination.
+  for(const [index,source] of [...files].entries())if(!replacements.has(source)&&!source.includes('-matched-')&&!source.includes('-shared-')){
+    const file=source.replace(/\.jpg$/,'-reference.jpg');
+    await fsp.rename(path.join(stage,source),path.join(stage,file));files[index]=file;
+    for(const asset of product.assets)if(asset.file===source){asset.file=file;asset.imageRole='reference';}
+  }
   if(!product.variations?.length){
     const price=filenameCost(observedProductPrice(product.prices));
     if(price)for(const [index,source] of [...files].entries()){
@@ -120,10 +146,14 @@ async function nameVariationImages(product,stage,files,checkpoint) {
 function productRows(product) {
   const base={Title:product.title||'',Description:product.descriptionText||'','Seller Description':product.sellerDescriptionText||'',Features:lines(product.features),Specifications:lines(product.specifications)};
   const variants=product.variations||[];const visibleMode=product.prices?.mode==='visible-variation';
-  const row=(variant,name,price,options=[])=>({...base,Variation:name,Price:price,
-    Size:lines(options.filter(o=>/size|dimension|尺寸/i.test(o.name)).map(o=>o.value)),
+  const row=(variant,name,price,options=[])=>({...base,...variantMetadata(product,variant,options),Variation:name,Price:price,
     Color:lines(options.filter(o=>/colou?r|颜色/i.test(o.name)).map(o=>o.value)),
-    Images:rowImages(product,variant,options)});
+    Currency:priceCurrency(price),
+    'Price Status':!price?'unconfirmed':!variant?'product-level':visibleMode?'confirmed-visible':'catalog-unverified',
+    'Option Status':!variant?'product-level':variant.observedOptions?.length?'confirmed-selected':variant.attributes?'catalog-only':'unconfirmed-options',
+    Images:rowImages(product,variant,options),
+    'Matched Images':rowImages(product,variant,options,'matched'),
+    'Shared Images':rowImages(product,variant,options,'shared')});
   const rows=variants.map(v=>row(v,v.name||v.attributes||v.skuId||'',money(visibleMode?v.displayedPrice:v.price),variantOptions(product,v)));
   if (!variants.length) for (const p of product.properties||[]) for (const v of p.values||[]) if (v.name) rows.push(row({},[p.name,v.name].filter(Boolean).join(': '),'',[{name:p.name,value:v.name,propertyId:p.id,id:v.id,image:v.image}]));
   const productPrice=observedProductPrice(product.prices);
@@ -205,6 +235,11 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
     }
     await nameVariationImages(product,stage,files,checkpoint);
     const rows=productRows(product);
+    product.imageMap=[...new Set(product.assets.filter(asset=>asset.status==='downloaded').map(asset=>asset.file))].map(file=>{
+      const asset=product.assets.find(asset=>asset.file===file),variant=product.variations?.[asset.variantIndex];
+      const row=variant?rows.find(row=>row['Variant ID']===variantMetadata(product,variant,variantOptions(product,variant))['Variant ID']):null;
+      return {File:file,'Variant ID':row?.['Variant ID']||'','Design ID':row?.['Design ID']||'',Design:row?.Design||'',Size:row?.Size||'','Hoop / Pack':row?.['Hoop / Pack']||'',Price:row?.Price||'','Price Status':row?.['Price Status']||'product-reference',Role:asset.imageRole||'reference','Source URLs':lines(product.assets.filter(a=>a.file===file).map(a=>a.url)),'Option Status':row?.['Option Status']||'product-reference'};
+    });
     await writeSpreadsheet(path.join(stage,'product.xlsx'),product,rows);
     await new Promise((resolve,reject) => {
       const dest = fs.createWriteStream(tempZip,{flags:'wx'}); const zip = archiver('zip',{zlib:{level:6}});
@@ -216,7 +251,7 @@ async function makeArchive(product, output, request, checkpoint = async () => {}
       try { await fsp.copyFile(tempZip,finalPath,fs.constants.COPYFILE_EXCL); break; }
       catch (e) { if (e.code !== 'EEXIST') throw e; finalPath=path.join(output,`${name}-${i}.zip`); }
     }
-    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,filteredImages,preview,capturedAt:product.capturedAt,exportFormat:EXPORT_FORMAT,rowCount:rows.length,descriptionPreview:(product.descriptionText||'').slice(0,1000),sellerDescriptionPreview:(product.sellerDescriptionText||'').slice(0,600),descriptionFull:(product.descriptionText||'').slice(0,50000),sellerDescriptionFull:(product.sellerDescriptionText||'').slice(0,50000),descriptionTruncated:(product.descriptionText||'').length>50000,sellerDescriptionTruncated:(product.sellerDescriptionText||'').length>50000,featuresPreview:lines(product.features),specificationsPreview:lines(product.specifications),specificationCount:(product.specifications||[]).length,featureCount:(product.features||[]).length,detailsPreview:rows.slice(0,5).map(r=>({title:r.Title,variation:r.Variation,price:r.Price,size:r.Size,color:r.Color})),priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
+    return {path:finalPath,title:product.title,productId:id,warnings:product.warnings,images:files.length,filteredImages,preview,capturedAt:product.capturedAt,exportFormat:EXPORT_FORMAT,rowCount:rows.length,descriptionPreview:(product.descriptionText||'').slice(0,1000),sellerDescriptionPreview:(product.sellerDescriptionText||'').slice(0,600),descriptionFull:(product.descriptionText||'').slice(0,50000),sellerDescriptionFull:(product.sellerDescriptionText||'').slice(0,50000),descriptionTruncated:(product.descriptionText||'').length>50000,sellerDescriptionTruncated:(product.sellerDescriptionText||'').length>50000,featuresPreview:lines(product.features),specificationsPreview:lines(product.specifications),specificationCount:(product.specifications||[]).length,featureCount:(product.features||[]).length,detailsPreview:rows.slice(0,5).map(r=>({title:r.Title,variation:r.Variation,price:r.Price,size:[...new Set([r.Size,r['Hoop / Pack']].filter(Boolean))].join(' / '),color:r.Color,design:r.Design,hoop:r['Hoop / Pack'],variantId:r['Variant ID'],priceStatus:r['Price Status']})),priceMode:product.prices?.mode==='visible-variation'?'visible-variation-v1':null};
   } finally {
     await fsp.rm(stage,{recursive:true,force:true}); await fsp.rm(tempZip,{force:true});
   }

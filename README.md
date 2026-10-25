@@ -2,11 +2,25 @@
 
 Windows desktop app with Playwright Chromium included. Paste 15, 20, 30 or more AliExpress product links and save each completed product as an Excel workbook with JPEG photos. Login and CAPTCHA are manual; missing information is never invented.
 
+## 1.4.8 — explicit design, size and price mapping
+
+Each selected design/size/hoop combination now has a stable Variant ID and Design ID. Excel's **Variations** sheet includes **Design**, the exact **Size**, **Hoop / Pack**, **Price**, **Price Status**, **Option Status**, all original options as text/JSON, and separate **Matched Images** and **Shared Images**. Equal prices do not merge different designs. The **Image Map** sheet joins filenames to those same IDs, options, price status, image role and original source URLs. Product Details includes reading instructions and capture warnings for downstream AI tools.
+
+Photos keep readable observed options and confirmed costs, plus the same IDs and `matched`/`shared` markers in their names. Known images of another design are excluded from that variant, even when they also occur in the common gallery. Generic gallery/description photos are labelled `shared`; they are not proof of a selected design, physical size or included hoop. Unknown prices say `price-unconfirmed` and stay blank in Excel. Bare currency symbols are preserved without assuming an ISO currency.
+
+Changing a design can reveal a different size list or clear a required size selection. Extraction now explores those actual controls even when the initial catalog appears complete, and reselects real enabled required options before confirming a fresh price. Unsupported combinations are not invented. Catalog-only rows are explicitly unconfirmed and do not establish availability. Existing discovery safety limits and stale-price checks still apply.
+
+Add earlier product links again after updating to recapture the **v9** export format. Older ZIPs remain untouched and do not block recapture. The archive still contains only `product.xlsx` and `Images/*.jpg`.
+
+**Roman Urdu:** Har design aur uske size/hoop ki alag row aur Variant ID hogi. Excel aur tasveer ke naam mein wohi ID aur usi combination ki confirmed price milegi. `matched` us option se juri photo hai; `shared` aam product photo hai. AI ko Excel aur Images ek saath dein. Purane links dobara Run karein taake naya format banay.
+
 ## Install on Windows
 
-Existing installations: apply the **1.4.7 small update** through Settings. It fixes incomplete design/size/hoop pricing and hardens history recovery, queue errors and browser security without downloading the runtime again.
+Existing **1.4.0 or later** installations: choose **Settings → Check for updates → Download small update → Restart to apply**, then confirm **1.4.8** in the software header. The compatible small update keeps the installed Electron/Chromium runtime, settings, login and archive history. Finish the current queue before restarting. Add earlier product links again to create the new v9 exports.
 
-New installations can use the optional **1.4.7 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). Lite omits bundled Chromium; the pinned browser downloads once on first use and is kept in your user profile. This reduces the installer download, not the total disk space needed after Chromium is installed. No Node.js is required. The earlier [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same small update. Requires Windows 10/11 x64.
+New installations can use **1.4.8 Lite Setup** from [GitHub Releases](https://github.com/Awser42/Software/releases/latest). It omits bundled Chromium; the pinned browser downloads once on first use and stays in the user profile. The earlier checksum-verified [full 1.4.3 Setup](https://github.com/Awser42/Software/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe) remains available with Chromium included, followed by the same 1.4.8 small update. Requires Windows 10/11 x64. No Node.js is required.
+
+[Roman Urdu AI handoff instructions](docs/AI-EXPORT-ROMAN-URDU.txt) explain how to give the workbook and photos to another tool.
 
 1. Quit an older portable copy through its system-tray **Quit** command.
 2. Run Setup, choose an installation folder and launch the app from its shortcut.

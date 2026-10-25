@@ -295,3 +295,19 @@ Price, currency, region, coupons, taxes and shipping can affect the final checko
 Run the portable EXE, click Open Chromium / Login, and sign in. Set your country/currency, paste 15, 20 or 30 full product links into the numbered cells and Run. Each completed product should appear in Latest saved product and Downloads while later links continue.
 
 Inspect each version 1.4.0 ZIP: it should contain `product.csv`, `product.xlsx` and the `Images/` folder. Open `product.xlsx` for the readable Product Details and Variations sheets; the CSV retains all ten columns for import. Compare the captured fields with the logged-in page. Select each exported variation in Chromium and compare its visible current price with that row's Price and its Size/Color values. Confirm that missing or unconfirmed prices remain blank instead of receiving a hidden SKU amount. Increase Page / variation settling time if the page updates slowly. Where available, Description should contain the complete observed AI overview and its disclaimer; otherwise it should contain the lower seller description. Seller Description should independently retain the observed lower seller text. Features and Specifications must match observed page content. Confirm that all Images paths resolve, the files open as JPEGs and matching variation images are included. Review warnings in the app for unavailable fields or images.
+
+
+## Local 1.4.8 design/size mapping verification — 2026-10-25
+
+Source changes add stable product-scoped Variant IDs/Design IDs, explicit option/price confirmation status, full option text/JSON, matched/shared image references, a third Image Map worksheet and reading instructions. Design-dependent size controls are explored and reseeded when a design change clears a required selection. Existing v8 ZIPs can be recaptured as v9 without deleting their files.
+
+Observed local checks:
+- `npm test`: 121 tests passed, 0 failed. The installed build dependency now matches the existing lockfile override (`global-agent` 4.1.3).
+- New regression cases: six confirmed combinations with different size lists per design; twelve screenshot-shaped design/hoop combinations; C1 $5.25 without hoop and $6.89 with 20cm hoop; equal prices across designs retain separate identities; known other-design gallery images are excluded; shared references remain labelled; stable IDs survive row order/price changes; unconfirmed catalog prices stay blank; v8 recapture preserves earlier ZIPs. Fixtures are synthetic and are not live-account evidence.
+- Linux Electron desktop batch: 31 workbooks and 372 JPEGs verified, including manual gate, three tabs, pause/resume, failed navigation/retry, previews and persisted history.
+- Layout/performance: all five panels at 360/390/520/768/1024/1440px; 2,000 records and 500 notifications preserve cards, images and open previews.
+- Lockfile npm audit: 0 known vulnerabilities.
+- Exact code-update ZIP: manifest, sizes, SHA-256 and every declared source file verified.
+- Windows x64 application packaged with the pinned cached Electron and bundled Chromium. Every packaged source file matches this checkout. Final NSIS payload was independently extracted and tested; its app.asar reports 1.4.8 and matches every source file.
+
+The Linux host's Wine toolset could not run the intermediate uninstaller generator. The successful NSIS build used electron-builder's own UninstallerReader to extract that generated uninstaller, as its existing macOS path does. No application code or NSIS install/uninstall script was replaced for this workaround. Native Windows install/uninstall and live AliExpress account acceptance were not run here; previous native results elsewhere in this document are not 1.4.8 acceptance. The installer is unsigned. This local build was not published to GitHub; use its Setup instead of expecting the public updater to find it.

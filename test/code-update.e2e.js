@@ -4,7 +4,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
 const assert=require('node:assert/strict');
-const {archiveTable}=require('./workbook');
+const {archiveTable,unzip,sheetRows}=require('./workbook');
 const {productHtml,endpointHtml,frameHtml}=require('./fixtures');
 const {hoopHtml,hoops,designs,prices:hoopPrices}=require('./hoop-fixtures');
 const audit={status:'running',stages:[]};
@@ -78,13 +78,14 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
     for(const download of result.downloads){
       const fixture=fixtures.find(f=>f.id===download.productId),table=await archiveTable(download.path);
       const rows=table.slice(1).map(row=>Object.fromEntries(table[0].map((key,index)=>[key,row[index]])));
-      assert.equal(rows.length,fixture.hoops?12:2);for(const row of rows){const expected=fixture.hoops?hoopPrices[designs.indexOf(row.Color)][hoops.indexOf(row.Size)]:row.Size==='20*20cm'?fixture.large:fixture.small;assert.equal(row.Price,expected);assert(row.Images.split('\n').every(file=>file.includes('-cost-'+expected+'-')));}
+      assert.equal(download.exportFormat,'product-xlsx-jpeg-v9');const book=await unzip((await unzip(download.path))['product.xlsx']);assert(book['xl/worksheets/sheet3.xml']);const [imageHeaders,...imageValues]=sheetRows(book['xl/worksheets/sheet3.xml']);const imageMap=imageValues.map(values=>Object.fromEntries(imageHeaders.map((key,index)=>[key,values[index]])));
+      assert.equal(rows.length,fixture.hoops?12:2);for(const row of rows){const expected=fixture.hoops?hoopPrices[designs.indexOf(row.Color)][hoops.indexOf(row.Size)]:row.Size==='20*20cm'?fixture.large:fixture.small;assert.equal(row.Price,expected);assert.equal(row.Design,row.Color);assert.equal(row['Price Status'],'confirmed-visible');assert.equal(row['Option Status'],'confirmed-selected');assert.match(row['Variant ID'],/^V[a-f0-9]{12}$/);assert.match(row['Design ID'],/^D[a-f0-9]{12}$/);for(const file of row.Images.split('\n')){assert(file.includes('-cost-'+expected+'-'));assert(file.includes(row['Variant ID']));const mapped=imageMap.find(image=>image.File===file);assert(mapped);assert.equal(mapped['Variant ID'],row['Variant ID']);assert.equal(mapped.Design,row.Design);assert.equal(mapped.Price,row.Price);assert(['matched','shared'].includes(mapped.Role));}}
     }
     stage('healthy update pointer and screenshot');
     assert.equal(JSON.parse(await fs.readFile(path.join(data,'code-updates','active.json'),'utf8')).pending,false);
     await assert.rejects(fs.access(path.join(data,'code-updates','booting.json')),{code:'ENOENT'});
     await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/code-update-windows.png'});
-    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,hoopCombinations:12,distinctHoopPrices:true,browserSandbox:result.sandbox,loginPreserved:true,softwareVisible:true,visibilityWorker:result.visibilityWorker});
+    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,exportFormat:'product-xlsx-jpeg-v9',variantIdentities:true,imageMapping:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,hoopCombinations:12,distinctHoopPrices:true,browserSandbox:result.sandbox,loginPreserved:true,softwareVisible:true,visibilityWorker:result.visibilityWorker});
     console.log('PASS: existing Windows EXE applied only new code, hid Chromium without hiding the software, shared login across three concurrent product tabs and kept every size-specific cost isolated.');
   }catch(error){audit.status='failed';audit.error={message:error.message,stack:error.stack};throw error;}
   finally{await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/code-update.json',JSON.stringify(audit,null,2)+'\n');if(instance)await instance.close().catch(()=>{});await fs.rm(data,{recursive:true,force:true,maxRetries:10,retryDelay:300}).catch(()=>{});}
