@@ -311,3 +311,12 @@ Observed local checks:
 - Windows x64 application packaged with the pinned cached Electron and bundled Chromium. Every packaged source file matches this checkout. Final NSIS payload was independently extracted and tested; its app.asar reports 1.4.8 and matches every source file.
 
 The Linux host's Wine toolset could not run the intermediate uninstaller generator. The successful NSIS build used electron-builder's own UninstallerReader to extract that generated uninstaller, as its existing macOS path does. No application code or NSIS install/uninstall script was replaced for this workaround. Native Windows install/uninstall and live AliExpress account acceptance were not run here; previous native results elsewhere in this document are not 1.4.8 acceptance. The installer is unsigned. This local build was not published to GitHub; use its Setup instead of expecting the public updater to find it.
+
+
+## 1.4.9 missing 20cm hoop review — 2026-10-25
+
+Two regressions were reproduced on 1.4.8 before the fix. A visible stale selected-SKU marker suppressed uniquely matching control combinations: the six-design/two-hoop fixture retained one confirmed row instead of 12. A 20cm hoop button arriving after the first stable price left one row instead of two. Both now retain all expected observed rows with their own $5.25/$6.89 C1 prices. These are controlled reproductions, not a live-account claim or proof of the user's exact page without its URL.
+
+The fix matches a unique complete selected control set independently of stale SKU markers, refreshes options after backtracking and performs a final rescan. A selected but unconfirmed size/hoop is kept as a blank-price row. Interrupted/limited/unknown captures expose confirmed/observed coverage and INCOMPLETE in Downloads, preview and workbook; they remain retryable despite duplicate skipping. Earlier v9 exports can be recaptured as v10 with old ZIPs preserved. Existing stale-price, ambiguous-SKU, disabled-combination and safety-limit tests remain passing.
+
+Local checks: 125/125 unit tests passed; the real Linux desktop fixture batch verified 31 workbooks and 372 JPEGs; responsive UI and the incomplete-warning check passed; npm audit reported zero known vulnerabilities. Two focused coverage assertions additionally require 12/12 and 2/2 scan completion for the stale-marker and late-button reproductions. Native Windows release acceptance requires six explicit `with 20cm hoop` rows under a stale marker and the new complete-coverage flags. The workflow must pass before publication.

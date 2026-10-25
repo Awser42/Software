@@ -107,9 +107,9 @@ jobs:
         shell: bash
         run: |
           VERSION=$(node -p 'require("./package.json").version')
-          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .exportFormat == "product-xlsx-jpeg-v9" and .variantIdentities and .imageMapping and .peakTabs == 3 and .distinctProductPrices and .hoopCombinations == 12 and .distinctHoopPrices and .browserSandbox and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
+          jq -e --arg version "$VERSION" '.status == "passed" and .nativeWindows and .version == $version and .exportFormat == "product-xlsx-jpeg-v10" and .variantIdentities and .imageMapping and .twentyCmHoopRows == 6 and .staleSkuHoops and .captureComplete and .peakTabs == 3 and .distinctProductPrices and .hoopCombinations == 12 and .distinctHoopPrices and .browserSandbox and .softwareVisible and .loginPreserved and .visibilityWorker.processStarts == 1' evidence/code-update.json
           jq -e '.metadata.vulnerabilities.total == 0' evidence/dependency-audit.json
-          jq -e '.status == "passed" and .benchmark.nodeReused and .benchmark.imageReused and .benchmark.previewOpen and .benchmark.mutations == 0' evidence/layout-performance.json
+          jq -e '.status == "passed" and .benchmark.nodeReused and .benchmark.imageReused and .benchmark.previewOpen and .benchmark.mutations == 0 and .partialCaptureWarning' evidence/layout-performance.json
           jq -e '.status == "passed" and .noBundledChromium and .externalCache and .installedLaunch and .uninstalled' evidence/lite.json
           jq -e '.status == "passed" and .nativeWindows and .restartPersistence and .copyExport and .isolatedRetry and .failedRetryReturned and .downloadsClearPreservesFailuresAndExports and .confirmedRemoval and .outputFailureRecovery' evidence/failed-links.json
           cp evidence/code-update.json download/Windows-update-check.json
@@ -127,15 +127,17 @@ jobs:
           LITE_BYTES=$(jq -r .bytes evidence/lite.json)
           (cd download && sha256sum *-Code-update.zip *-Lite-Setup.exe update-manifest.json > SHA256SUMS.txt)
           cat > notes.md <<TEXT
-          Each design and its own size/hoop option now keep a separate identity, visible price and matching photos.
+          Fix missing 20cm hoop and size variations.
+
+          A stale catalog SKU marker no longer suppresses a complete, uniquely matching selected design/size/hoop row. The option explorer refreshes lists after returning from other selections and rescans for controls that load after the first stable price. Selected options with unconfirmed prices stay visible as blank-price rows. Incomplete captures are labelled with confirmed/observed counts and remain retryable with duplicate skipping enabled. Earlier v9 ZIPs can be recaptured as v10 without deletion.
 
           Update the installed software through **Settings > Check for updates > Download small update > Restart to apply**. Finish the active queue first and confirm **Version $VERSION** in the header. Chromium, settings, login and earlier ZIPs are kept. Do not extract the code ZIP over the EXE.
 
           Excel Variations adds Design, Size, Hoop/Pack, stable Variant ID and Design ID, full original options and confirmation status. Image Map joins filenames to the same combination, price, image role and source URLs. JPEG names include those IDs, observed options and confirmed cost. Equal prices do not merge different designs. Known photos of another design are excluded; generic photos are labelled shared references. Blank prices remain unconfirmed. A design change can reveal a different size list or clear a required selection; those real enabled controls are explored and freshly priced. Capture limits warn when additional combinations may remain.
 
-          **Add earlier links again** to create the new v9 format. Old ZIP files are kept. Give product.xlsx and Images together to the next AI/tool; AI-EXPORT-ROMAN-URDU.txt includes a ready handoff prompt.
+          **Add earlier links again** to create the new v10 format. Old ZIP files are kept. Give product.xlsx and Images together to the next AI/tool; AI-EXPORT-ROMAN-URDU.txt includes a ready handoff prompt.
 
-          This exact code ZIP passed native Windows acceptance on the released 1.4.3 EXE, including variant IDs, Image Map, different design/size prices, three tabs, browser controls and persistent login. Source desktop checks cover 31 workbooks and 372 JPEGs; separate checks cover history/failure recovery, responsive UI and actual Lite installation/startup/uninstall. Fixtures are controlled examples, not live-account price evidence. The dependency audit reports zero known advisories. The Lite browser cache is seeded for acceptance; a live first-browser download was not verified. Installers remain unsigned.
+          This exact code ZIP passed native Windows acceptance on the released 1.4.3 EXE, including six explicitly priced 20cm hoop rows with a stale SKU marker, variant IDs, Image Map, different design/size prices, three tabs, browser controls and persistent login. Source desktop checks cover 31 workbooks and 372 JPEGs; separate checks cover history/failure recovery, responsive UI and actual Lite installation/startup/uninstall. Fixtures are controlled examples, not live-account price evidence. The dependency audit reports zero known advisories. The Lite browser cache is seeded for acceptance; a live first-browser download was not verified. Installers remain unsigned.
 
           New installations may use the optional Lite Setup: $LITE_BYTES bytes, $LITE_PERCENT percent smaller than the earlier full 1.4.3 installer. It downloads pinned Chromium on first use. Existing users should use the small update.
 
@@ -143,4 +145,4 @@ jobs:
           Windows acceptance: https://github.com/$GH_REPO/actions/runs/$TESTED_RUN
           Full bundled base installer: https://github.com/$GH_REPO/releases/download/v1.4.3/AliExpress-Product-Archiver-1.4.3-Setup.exe
           TEXT
-          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Explicit design, size and price mapping" --notes-file notes.md
+          gh release create "v$VERSION" download/* --target "$TESTED_SHA" --title "$VERSION - Fix missing 20cm hoop and size variations" --notes-file notes.md

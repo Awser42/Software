@@ -8,3 +8,5 @@ Image filenames mein wohi Variant ID/Design ID aur us row ki cost maujood hai. E
 Blank price/size ko unknown rakho; missing data guess na karo. without hoop ko 0 cm physical size na banao. Currency ko usi code/symbol mein rakho, conversion assume na karo.
 Product Details ke Capture warnings aur reading instructions bhi dekho. Catalog-only rows availability confirm nahi kartin. Safety-limit warning ho to complete catalog ka dawa na karo.
 Final table mein Design, Size, Hoop/Pack, Price, Currency, Variant ID aur matching image filenames dikhao.
+
+Agar INCOMPLETE ya Variation capture mein incomplete ho, to kuch size/hoop options ya prices abhi baqi ho sakte hain. Selected option ki row blank price ke saath bhi aa sakti hai; usay delete ya guess na karein. Is link ko dobara Run karke recapture karein.

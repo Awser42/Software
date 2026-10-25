@@ -228,7 +228,7 @@ class Browser {
           await manual('Product content has not loaded. Check the product in Chromium, finish any login prompt, then click Continue after login.'); continue;
         }
         data.productId=item.productId;
-        if(topData.variations?.some(variant=>variant.displayedPrice)){
+        if(topData.prices?.captureCoverage||topData.variations?.some(variant=>variant.displayedPrice)){
           data.properties=topData.properties;data.variations=topData.variations;data.prices=topData.prices;
           data.warnings.push(...(topData.warnings||[]));
         }else await capturePrices(data);

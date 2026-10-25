@@ -167,3 +167,12 @@ test('exports without size and price image filenames can be recaptured while kee
 
 test('incomplete earlier design/size/hoop captures can be recaptured without deleting their ZIPs',async()=>{const file=path.join(tmp,'v7-product.zip');await fs.writeFile(file,'earlier limited catalog capture');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'62',path:file,exportFormat:'product-xlsx-jpeg-v7',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/62.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'earlier limited catalog capture');});
 test('v8 archives can be recaptured with explicit design/variant/image mapping while keeping the old ZIP',async()=>{const file=path.join(tmp,'v8-product.zip');await fs.writeFile(file,'earlier v8 archive');const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:'63',path:file,exportFormat:'product-xlsx-jpeg-v8',priceMode:'visible-variation-v1'}]}});assert.equal((await q.add(['https://www.aliexpress.com/item/63.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'earlier v8 archive');});
+
+
+test('v9 hoop captures and incomplete current captures can be retried without deleting saved ZIPs',async()=>{
+  for(const [id,format,captureComplete]of [['64','product-xlsx-jpeg-v9',true],['65',EXPORT_FORMAT,false]]){
+    const file=path.join(tmp,id+'-hoop.zip');await fs.writeFile(file,'kept earlier hoop export');
+    const q=new Queue({extract:async()=>{},initial:{downloads:[{productId:id,path:file,exportFormat:format,priceMode:'visible-variation-v1',captureComplete}]}});
+    assert.equal((await q.add(['https://www.aliexpress.com/item/'+id+'.html']))[0].status,'pending');assert.equal(await fs.readFile(file,'utf8'),'kept earlier hoop export');
+  }
+});

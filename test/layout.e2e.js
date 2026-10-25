@@ -30,7 +30,7 @@ async function settle(page){await page.evaluate(()=>new Promise(resolve=>request
     await page.setViewportSize({width:1440,height:1000});
     const stats=await page.evaluate(async()=>{
       const canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;const ctx=canvas.getContext('2d');ctx.fillStyle='#d5e8dc';ctx.fillRect(0,0,320,240);const preview=canvas.toDataURL('image/jpeg');
-      const downloads=Array.from({length:2000},(_,index)=>({path:`C:/exports/product-${index}.zip`,productId:String(index),title:`Product ${String(index).padStart(4,'0')}`,images:12,rowCount:2,capturedAt:new Date(1700000000000+index*1000).toISOString(),exportFormat:'product-xlsx-jpeg-v9',preview,warnings:[],detailsPreview:[{variation:'Size: S',size:'S',price:'$6.40'},{variation:'Size: L',size:'L',price:'$8.15'}]}));
+      const downloads=Array.from({length:2000},(_,index)=>({path:`C:/exports/product-${index}.zip`,productId:String(index),title:`Product ${String(index).padStart(4,'0')}`,images:12,rowCount:2,capturedAt:new Date(1700000000000+index*1000).toISOString(),exportFormat:'product-xlsx-jpeg-v10',preview,warnings:[],detailsPreview:[{variation:'Size: S',size:'S',price:'$6.40'},{variation:'Size: L',size:'L',price:'$8.15'}]}));
       const state={items:[],downloads,running:false,paused:false};window.previewFixture=state;window.previewState(state);
       return {records:downloads.length};
     });
@@ -51,6 +51,7 @@ async function settle(page){await page.evaluate(()=>new Promise(resolve=>request
     await page.locator('#listView').click();assert(await page.locator('#downloadList').evaluate(node=>node.classList.contains('list-mode')));await page.screenshot({path:'test-results/redesign-downloads-list.png'});
     await page.locator('#gridView').click();await page.locator('#moreDownloads').click();assert.equal(await page.locator('.download-card').count(),48);
     await page.locator('#hideBrowser').hover();await page.locator('#tooltip').waitFor({state:'visible'});assert.match(await page.locator('#tooltip').textContent(),/Hide Chromium/);
+    await page.evaluate(()=>{window.previewFixture.downloads[0].captureComplete=false;window.previewFixture.downloads[0].variationCoverage={confirmed:1,observed:2,complete:false};window.previewState(window.previewFixture);});await settle(page);await page.locator('.download-card').first().scrollIntoViewIfNeeded();await settle(page);assert.match(await page.locator('.download-card .download-meta').first().textContent(),/INCOMPLETE/);await page.locator('.download-card .data-preview').first().evaluate(node=>{node.open=true;});assert.match(await page.locator('.download-card .data-warning').first().textContent(),/1 of 2 selected combinations/);audit.partialCaptureWarning=true;
     assert.deepEqual(failures,[]);Object.assign(audit,{status:'passed',history:stats,benchmark,search:true,sort:true,viewModes:true,pagination:true,stableArchiveTarget:true,reducedMotion:true});
     console.log('PASS: all five panels fit 360-1440px, search/sort/view/pagination work, and 500 progress messages reuse the same cards, photos and open previews across 2,000 records.');
   }catch(error){audit.error={message:error.message,stack:error.stack};throw error;}

@@ -86,7 +86,7 @@ function zipContents(file) {
    }finally{await browser.close();}
   });
   markStage('validate packaged archive and Chromium window states');assert.equal(result.url,'about:blank');assert.deepEqual(result.states,[{hidden:true,nativeHidden:true},{hidden:false,nativeHidden:false},{hidden:true,nativeHidden:true}]);assert(result.exe.startsWith(path.join(result.resources,'chromium')));
-  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v9');
+  assert.equal(result.sourceSignature,'RIFF/WEBP');assert.equal(result.archive.exportFormat,'product-xlsx-jpeg-v10');
   assert.equal(result.archive.priceMode,'visible-variation-v1');
   assert.equal(result.archive.images,1);assert.deepEqual(result.archive.warnings,[]);
   const entries=await zipContents(result.archive.path);

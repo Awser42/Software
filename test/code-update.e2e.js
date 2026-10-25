@@ -7,6 +7,7 @@ const assert=require('node:assert/strict');
 const {archiveTable,unzip,sheetRows}=require('./workbook');
 const {productHtml,endpointHtml,frameHtml}=require('./fixtures');
 const {hoopHtml,hoops,designs,prices:hoopPrices}=require('./hoop-fixtures');
+const {html:variantHtml,fixed:exactHoops}=require('./variant-fixtures');
 const audit={status:'running',stages:[]};
 function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+name);}
 (async()=>{
@@ -35,6 +36,7 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
     stage('native Chromium visibility and three real product tabs with different prices');
     const fixtures=[['801','$8.15','$6.40'],['802','$12.35','$9.20'],['803','$17.85','$11.10']].map(([id,large,small])=>({id,large,small,html:productHtml(id,{large,small}),endpoint:endpointHtml(id),frame:frameHtml(id)}));
     fixtures.push({id:'804',hoops:true,html:hoopHtml('804'),endpoint:'',frame:''});
+    fixtures.push({id:'805',exactHoops:true,html:variantHtml('805',exactHoops,false,{staleSku:'C1-20'}),endpoint:'',frame:''});
     const result=await instance.evaluate(async({app,BrowserWindow},fixtures)=>{
       const startup=globalThis[Symbol.for('aliexpress.archiver.bootstrap')];
       const {loadCode}=process.mainModule.require(app.getAppPath()+'/src/bootstrap.js');
@@ -73,19 +75,20 @@ function stage(name){audit.stages.push(name);console.log('CODE_UPDATE_STAGE '+na
     },fixtures);
     assert(result.softwareVisible);assert.deepEqual(result.states.map(state=>state.hidden),[true,false,true]);
     assert.equal(result.final.visible,0);assert.equal(result.peak,3);assert.equal(result.remainingTabs,1);assert(result.cookiePreserved);assert.equal(result.visibilityWorker.processStarts,1);assert(result.visibilityWorker.requests>10);
-    assert(result.sandbox);assert.equal(result.authenticated.length,4);assert(result.authenticated.every(Boolean));assert(result.items.every(item=>item.status==='done'),JSON.stringify(result.items));
-    assert.equal(result.downloads.length,4);
+    assert(result.sandbox);assert.equal(result.authenticated.length,fixtures.length);assert(result.authenticated.every(Boolean));assert(result.items.every(item=>item.status==='done'),JSON.stringify(result.items));
+    assert.equal(result.downloads.length,fixtures.length);let twentyCmRows=0;
     for(const download of result.downloads){
       const fixture=fixtures.find(f=>f.id===download.productId),table=await archiveTable(download.path);
       const rows=table.slice(1).map(row=>Object.fromEntries(table[0].map((key,index)=>[key,row[index]])));
-      assert.equal(download.exportFormat,'product-xlsx-jpeg-v9');const book=await unzip((await unzip(download.path))['product.xlsx']);assert(book['xl/worksheets/sheet3.xml']);const [imageHeaders,...imageValues]=sheetRows(book['xl/worksheets/sheet3.xml']);const imageMap=imageValues.map(values=>Object.fromEntries(imageHeaders.map((key,index)=>[key,values[index]])));
-      assert.equal(rows.length,fixture.hoops?12:2);for(const row of rows){const expected=fixture.hoops?hoopPrices[designs.indexOf(row.Color)][hoops.indexOf(row.Size)]:row.Size==='20*20cm'?fixture.large:fixture.small;assert.equal(row.Price,expected);assert.equal(row.Design,row.Color);assert.equal(row['Price Status'],'confirmed-visible');assert.equal(row['Option Status'],'confirmed-selected');assert.match(row['Variant ID'],/^V[a-f0-9]{12}$/);assert.match(row['Design ID'],/^D[a-f0-9]{12}$/);for(const file of row.Images.split('\n')){assert(file.includes('-cost-'+expected+'-'));assert(file.includes(row['Variant ID']));const mapped=imageMap.find(image=>image.File===file);assert(mapped);assert.equal(mapped['Variant ID'],row['Variant ID']);assert.equal(mapped.Design,row.Design);assert.equal(mapped.Price,row.Price);assert(['matched','shared'].includes(mapped.Role));}}
+      assert.equal(download.exportFormat,'product-xlsx-jpeg-v10');const book=await unzip((await unzip(download.path))['product.xlsx']);assert(book['xl/worksheets/sheet3.xml']);const [imageHeaders,...imageValues]=sheetRows(book['xl/worksheets/sheet3.xml']);const imageMap=imageValues.map(values=>Object.fromEntries(imageHeaders.map((key,index)=>[key,values[index]])));
+      assert.equal(download.captureComplete,true);assert.equal(rows.length,fixture.hoops||fixture.exactHoops?12:2);for(const row of rows){const expected=fixture.exactHoops?exactHoops[row.Design].find(option=>option.label===row.Size)?.price:fixture.hoops?hoopPrices[designs.indexOf(row.Color)][hoops.indexOf(row.Size)]:row.Size==='20*20cm'?fixture.large:fixture.small;assert.equal(row.Price,expected);if(fixture.exactHoops&&row.Size==='with 20cm hoop')twentyCmRows++;assert.equal(row.Design,row.Color);assert.equal(row['Price Status'],'confirmed-visible');assert.equal(row['Option Status'],'confirmed-selected');assert.match(row['Variant ID'],/^V[a-f0-9]{12}$/);assert.match(row['Design ID'],/^D[a-f0-9]{12}$/);for(const file of row.Images.split('\n')){assert(file.includes('-cost-'+expected+'-'));assert(file.includes(row['Variant ID']));const mapped=imageMap.find(image=>image.File===file);assert(mapped);assert.equal(mapped['Variant ID'],row['Variant ID']);assert.equal(mapped.Design,row.Design);assert.equal(mapped.Price,row.Price);assert(['matched','shared'].includes(mapped.Role));}}
     }
+    assert.equal(twentyCmRows,6,'Every design retains its separately priced 20cm hoop row even with a stale SKU marker');
     stage('healthy update pointer and screenshot');
     assert.equal(JSON.parse(await fs.readFile(path.join(data,'code-updates','active.json'),'utf8')).pending,false);
     await assert.rejects(fs.access(path.join(data,'code-updates','booting.json')),{code:'ENOENT'});
     await fs.mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/code-update-windows.png'});
-    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,exportFormat:'product-xlsx-jpeg-v9',variantIdentities:true,imageMapping:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,hoopCombinations:12,distinctHoopPrices:true,browserSandbox:result.sandbox,loginPreserved:true,softwareVisible:true,visibilityWorker:result.visibilityWorker});
+    Object.assign(audit,{status:'passed',version:manifest.version,bytes:bytes.length,sha256:manifest.sha256,baseVersion:'1.4.3',nativeWindows:true,exportFormat:'product-xlsx-jpeg-v10',variantIdentities:true,imageMapping:true,twentyCmHoopRows:twentyCmRows,staleSkuHoops:true,captureComplete:true,chromiumStates:result.states,peakTabs:result.peak,distinctProductPrices:true,hoopCombinations:12,distinctHoopPrices:true,browserSandbox:result.sandbox,loginPreserved:true,softwareVisible:true,visibilityWorker:result.visibilityWorker});
     console.log('PASS: existing Windows EXE applied only new code, hid Chromium without hiding the software, shared login across three concurrent product tabs and kept every size-specific cost isolated.');
   }catch(error){audit.status='failed';audit.error={message:error.message,stack:error.stack};throw error;}
   finally{await fs.mkdir('test-results',{recursive:true});await fs.writeFile('test-results/code-update.json',JSON.stringify(audit,null,2)+'\n');if(instance)await instance.close().catch(()=>{});await fs.rm(data,{recursive:true,force:true,maxRetries:10,retryDelay:300}).catch(()=>{});}

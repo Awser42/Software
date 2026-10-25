@@ -14,45 +14,7 @@ const {convertToJpeg} = require('../src/jpeg');
 const {unzip, sheetRows, archiveTable} = require('./workbook');
 
 let browser, directory;
-const imageUrl = design => `https://ae01.alicdn.com/kf/fixture-${design}.png`;
-const designColors = {C1:'#cf2020', C2:'#207e25', C3:'#2030cf', C4:'#bf20bf', C5:'#20bfbf', C6:'#cf8020', shared:'#dddddd'};
-const fixed = Object.fromEntries(Object.keys(designColors).filter(key => key !== 'shared').map((design, index) => [design, [
-  {id:'20', label:'without hoop', price:design === 'C1' ? '$5.25' : `$${(5.30 + index / 10).toFixed(2)}`},
-  {id:'21', label:'with 20cm hoop', price:design === 'C1' || design === 'C4' ? '$6.89' : `$${(7.10 + index / 10).toFixed(2)}`}
-]]));
-const dependent = {
-  C1:[{id:'20',label:'15 cm without hoop',price:'$5.25'}, {id:'21',label:'20 cm with hoop',price:'$6.89'}],
-  C2:[{id:'30',label:'10 cm without hoop',price:'$3.10'}, {id:'31',label:'18 cm with hoop',price:'$6.89'}, {id:'32',label:'25 cm with hoop',price:'$9.40'}],
-  C4:[{id:'40',label:'30 cm with hoop',price:'$12.70'}]
-};
-
-function html(id, catalog, resetSizes) {
-  const designs = Object.keys(catalog), initial = catalog[designs[0]];
-  const properties = [
-    {skuPropertyId:14,skuPropertyName:'Color',skuPropertyValues:designs.map(design => ({propertyValueId:design,propertyValueDisplayName:design,skuPropertyImagePath:imageUrl(design)}))},
-    {skuPropertyId:5,skuPropertyName:'Size',skuPropertyValues:initial.map(size => ({propertyValueId:size.id,propertyValueDisplayName:size.label}))}
-  ];
-  // This response looks complete for the initial size list, but does not know
-  // the design-dependent sizes revealed later by the real controls.
-  const skuPriceList = designs.flatMap(design => initial.map(size => ({skuId:`${design}-${size.id}`,skuAttr:`14:${design};5:${size.id}`,skuVal:{skuAmount:{currency:'USD',value:'999.00'}}})));
-  return `<!doctype html><html><body><h1>Fixture example - design and size mapping (not live product data)</h1>
-  <div class="product-price"><span id="price" class="price-default--current">${initial[0].price}</span></div>
-  <div class="sku-item--property" data-property-id="14"><div class="sku-item--title">Color</div><div class="sku-item--skus">${designs.map((design, index) => `<button type="button" class="sku-item--image" data-sku-col="14:${design}" title="${design}" aria-pressed="${index === 0}"><img data-src="${imageUrl(design)}" alt="${design}"></button>`).join('')}</div></div>
-  <div class="sku-item--property" data-property-id="5"><div class="sku-item--title">Size</div><div id="sizes" class="sku-item--skus">${initial.map((size, index) => `<button type="button" class="sku-item--text" data-sku-col="5:${size.id}" title="${size.label}" aria-pressed="${index === 0}">${size.label}</button>`).join('')}</div></div>
-  <script>
-  window.runParams=${JSON.stringify({productId:id,skuModule:{productSKUPropertyList:properties,skuPriceList}})};
-  const catalog=${JSON.stringify(catalog)},resetSizes=${JSON.stringify(resetSizes)};
-  document.addEventListener('click',event=>{
-    const button=event.target.closest('button[data-sku-col]');if(!button||button.getAttribute('aria-pressed')==='true')return;
-    for(const other of button.parentElement.children)other.setAttribute('aria-pressed','false');button.setAttribute('aria-pressed','true');
-    const design=document.querySelector('[data-property-id="14"] [aria-pressed="true"]').title;
-    if(resetSizes&&button.dataset.skuCol.startsWith('14:'))document.getElementById('sizes').innerHTML=catalog[design].map(size=>'<button type="button" class="sku-item--text" data-sku-col="5:'+size.id+'" title="'+size.label+'">'+size.label+'</button>').join('');
-    const selected=document.querySelector('[data-property-id="5"] [aria-pressed="true"]');
-    const size=selected&&catalog[design].find(size=>size.id===selected.dataset.skuCol.split(':')[1]);
-    const price=document.getElementById('price');price.setAttribute('aria-busy','true');
-    setTimeout(()=>{price.textContent=size?size.price:'';price.removeAttribute('aria-busy');},65);
-  });</script></body></html>`;
-}
+const {imageUrl,designColors,fixed,dependent,html}=require('./variant-fixtures');
 
 before(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'variant-export-'));
@@ -60,12 +22,15 @@ before(async () => {
 });
 after(async () => {await browser?.close(); await fs.rm(directory, {recursive:true, force:true});});
 
-async function capture(id, catalog, resetSizes) {
+async function capture(id, catalog, resetSizes, {staleSku=null,lateHoopMs=0,unpricedHoop=false}={}) {
   const page = await browser.newPage();
   await page.route('https://www.aliexpress.com/**', route => route.fulfill({contentType:'text/html', body:html(id, catalog, resetSizes)}));
   await page.goto(`https://www.aliexpress.com/item/${id}.html`);
   const product = await extractPage(page);
   product.productId = id;
+  if(staleSku)await page.evaluate(sku=>{const marker=document.createElement('div');marker.dataset.selectedSkuId=sku;marker.textContent='Stale selected SKU';document.body.append(marker);},staleSku);
+  if(lateHoopMs)await page.evaluate(delay=>{const option=document.querySelector('[data-sku-col="5:21"]');option.remove();setTimeout(()=>document.getElementById('sizes').append(option),delay);},lateHoopMs);
+  if(unpricedHoop){await page.evaluate(()=>{window.blockHoopPrice=true;});product.variations=product.variations.filter(variant=>!variant.attributes.endsWith('5:21'));}
   // The full suite runs several real Chromium processes at once. Give UI
   // scheduling enough time; production retains its 10-second freshness window.
   await captureVisiblePrices(page, product, {checkpoint:async () => {}}, {settleMs:80, timeoutMs:3500});
@@ -154,4 +119,45 @@ test('unconfirmed catalog options keep a blank price and cannot claim a confirme
   const result=await makeArchive(product,directory,{get:async()=>{throw new Error('No images expected');}});
   const [headers,values]=await archiveTable(result.path),row=Object.fromEntries(headers.map((key,index)=>[key,values[index]]));
   assert.equal(row.Price,'');assert.equal(row['Price Status'],'unconfirmed');assert.equal(row['Option Status'],'catalog-only');assert.equal(row.Design,'C1');assert.equal(row['Hoop / Pack'],'without hoop');
+});
+
+
+test('stale catalog SKU markers cannot drop the selected 20cm hoop rows for any design', async () => {
+  const {page,product}=await capture('9249',fixed,false,{staleSku:'C1-20'});
+  try {
+    const confirmed=product.variations.filter(variant=>variant.displayedPrice);
+    assert.equal(confirmed.length,12,'Every design must retain both observed hoop options despite a stale SKU marker');assert.deepEqual(product.prices.captureCoverage,{confirmed:12,observed:12,complete:true});
+    for(const design of Object.keys(fixed)) {
+      const rows=confirmed.filter(variant=>variant.observedOptions.some(option=>option.name==='Color'&&option.value===design));
+      assert.deepEqual(new Set(rows.map(row=>row.observedOptions.find(option=>option.name==='Size').value)),new Set(['without hoop','with 20cm hoop']));
+      for(const row of rows)assert.equal(row.displayedPrice,fixed[design].find(size=>size.label===row.observedOptions.find(option=>option.name==='Size').value).price);
+    }
+    const result=await makeArchive(product,directory,{get:async()=>{throw new Error('No fixture image response');}});
+    const table=await archiveTable(result.path),rows=table.slice(1).map(values=>Object.fromEntries(table[0].map((key,index)=>[key,values[index]])));
+    assert.equal(rows.length,12);assert.equal(rows.filter(row=>row.Size==='with 20cm hoop').length,6);
+    assert(rows.every(row=>row['Price Status']==='confirmed-visible'&&row['Option Status']==='confirmed-selected'));
+  }finally{await page.close();}
+});
+
+
+test('a 20cm hoop option that appears after the first stable price is still discovered',async()=>{
+  const {page,product}=await capture('9349',{C1:fixed.C1},false,{lateHoopMs:450});
+  try{
+    const rows=product.variations.filter(variant=>variant.displayedPrice);
+    assert.equal(rows.length,2,'Rescan actual size controls before declaring the option graph exhausted');assert.deepEqual(product.prices.captureCoverage,{confirmed:2,observed:2,complete:true});
+    assert(rows.some(variant=>variant.observedOptions.some(option=>option.value==='with 20cm hoop')&&variant.displayedPrice==='$6.89'));
+  }finally{await page.close();}
+});
+
+
+test('an observed 20cm hoop option is retained with a blank price when freshness cannot be confirmed',async()=>{
+  const {page,product}=await capture('9449',{C1:fixed.C1},false,{unpricedHoop:true});
+  try{
+    const unknown=product.variations.find(variant=>variant.observedOptions?.some(option=>option.value==='with 20cm hoop'));
+    assert(unknown,'Do not drop the actual selected hoop just because its price is unknown');assert.equal(unknown.displayedPrice,null);
+    assert.deepEqual(product.prices.captureCoverage,{confirmed:1,observed:2,complete:false});
+    const result=await makeArchive(product,directory,{get:async()=>{throw new Error('No fixture image response');}});
+    assert.equal(result.captureComplete,false);const table=await archiveTable(result.path),rows=table.slice(1).map(values=>Object.fromEntries(table[0].map((key,index)=>[key,values[index]])));
+    const row=rows.find(row=>row.Size==='with 20cm hoop');assert(row);assert.equal(row.Price,'');assert.equal(row['Price Status'],'unconfirmed');assert.equal(row['Option Status'],'confirmed-selected');
+  }finally{await page.close();}
 });

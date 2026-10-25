@@ -1,6 +1,13 @@
 # Commercial Readiness Review
 
-Version: 1.4.8. Scope: Windows x64 desktop product archiving, not a commercial certification or penetration test. Controlled fixtures are not evidence of live-account prices or permission to use merchant content.
+Version: 1.4.9. Scope: Windows x64 desktop product archiving, not a commercial certification or penetration test. Controlled fixtures are not evidence of live-account prices or permission to use merchant content.
+
+## 1.4.9 size/hoop corrections
+
+- Reproduced stale-SKU suppression of 20cm hoop prices and delayed-control omission before changing the implementation. Complete uniquely selected controls now match rows independently of stale catalog SKU markers; ambiguous duplicate catalog records still cannot both claim one visible price.
+- The explorer refreshes visible option lists after returning from child selections and rescans before finishing. It retains actual selected options with an unconfirmed blank price on freshness failure, preserves stale-price safeguards, and marks interrupted/limited/unconfirmed captures incomplete.
+- Downloads, previews and the workbook show capture coverage. Incomplete current-format exports and earlier v9 captures remain retryable without deleting ZIPs. The new capture format is v10.
+- Native release acceptance includes six explicit `with 20cm hoop` rows with a stale SKU marker, as well as the existing design/size, pricing and image-map checks. Fixture coverage is not live-account acceptance.
 
 ## 1.4.8 export changes
 

@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 let settings,state,installation,activeTab='bulk',framePending=false,downloadLimit=24,itemLimit=150,failureLimit=50,view='grid',lastLatest=null,lastRunError='';
-let updateState={status:'idle',currentVersion:'1.4.8',totalBytes:0,downloadedBytes:0,canRestart:false};
+let updateState={status:'idle',currentVersion:'1.4.9',totalBytes:0,downloadedBytes:0,canRestart:false};
 const downloadCache=new Map(),rowCache=new Map(),failureCache=new Map();
 const linkGrid=window.LinkGrid.create({body:$('linkRows'),summary:$('linkCount'),onChange:({rows})=>{const select=$('rowCount'),custom=$('customRowCount');if([15,20,30].includes(rows)){select.value=String(rows);custom.hidden=true;}else{custom.hidden=false;custom.textContent=String(rows);select.value='custom';}}});
 $('addRows').onclick=()=>linkGrid.addRows(10);
@@ -21,6 +21,7 @@ function dataPreview(data){
   const description=data.descriptionFull||data.descriptionPreview||'',seller=data.sellerDescriptionFull||data.sellerDescriptionPreview||'';
   if(data.rowCount==null&&!description&&!seller&&!data.detailsPreview?.length)return null;
   const details=el('details',null,'data-preview');details.append(el('summary','Preview extracted data'));
+  if(data.captureComplete===false){const coverage=data.variationCoverage;details.append(el('p',`Incomplete variation capture${coverage?`: ${coverage.confirmed} of ${coverage.observed} selected combinations have confirmed prices`:''}. More size/hoop choices may remain. Run this link again; duplicate skipping will allow a retry.`,'data-warning'));}
   const counts=[];for(const [key,label] of [['rowCount','variation rows'],['featureCount','features'],['specificationCount','specifications']])if(data[key]!=null)counts.push(`${data[key]} ${label}`);
   if(counts.length)details.append(el('p',counts.join(' · '),'data-preview-counts'));
   if(data.title)details.append(el('strong','Product title'),el('p',data.title,'data-preview-description'));
@@ -35,7 +36,7 @@ function bytesLabel(value){const bytes=Number(value)||0;return bytes<1024*1024?`
 function renderUpdate(value){
   if(value&&typeof value==='object')updateState={...updateState,...value};
   const u=updateState,busy=['checking','downloading'].includes(u.status),waiting=!!state?.running;
-  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.8'}`;$('runningVersion').textContent=u.currentVersion||'1.4.8';
+  $('appVersion').textContent=`Version ${u.currentVersion||'1.4.9'}`;$('runningVersion').textContent=u.currentVersion||'1.4.9';
   const messages={idle:'Ready to check for updates.',checking:'Checking GitHub for a compatible small update…',available:`Version ${u.availableVersion||''} is available.`,downloading:'Downloading the small app update…',ready:'Update downloaded and verified. Restart when your current run finishes.', 'up-to-date':'You have the latest compatible app version.',incompatible:'This update needs a new browser or app runtime. Download the full package from GitHub.',error:'The update could not be completed. Check your connection and try again.'};
   $('updateStatus').textContent=u.message||messages[u.status]||messages.idle;
   $('updateStatus').classList.toggle('update-error',u.status==='error');
@@ -130,16 +131,16 @@ function renderFailures(){
   if(!nodes.length)nodes.push(empty(query?'No matching failed links.':'No failed links.',query?'search':'folder-x'));
   reconcile($('failedList'),nodes);$('moreFailures').hidden=records.length<=failureLimit;$('failedResults').textContent=records.length?`${visible.length} of ${records.length} links`:'';
 }
-function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.preview?.length]);}
+function archiveSignature(d){return JSON.stringify([d.title,d.productId,d.exportFormat,d.capturedAt,d.images,d.previewRepairVersion,d.rowCount,d.captureComplete,d.preview?.length]);}
 function downloadCard(d){
   const card=el('article',null,'download-card'),actions=el('div',null,'download-actions'),preview=el('div',null,'preview'),body=el('div',null,'download-body');card.dataset.archivePath=d.path;
-  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v9'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
+  const badge=/xlsx/.test(d.exportFormat||'')?(d.exportFormat==='product-xlsx-jpeg-v10'?'Excel + JPEG':'Earlier Excel + JPEG'):'Earlier archive';
   const remove=command('','trash-2',async()=>{if(await call('delete-record',d.path))linkGrid.resetResults(d.productId);},'icon-button danger');
   remove.setAttribute('aria-label','Delete record');remove.dataset.tooltip='Delete record; keep ZIP';actions.append(el('span',badge,'badge'),remove);
   if(d.preview?.startsWith('data:image/')){const image=el('img');image.src=d.preview;image.alt=d.title||'Product image';image.decoding='async';image.loading='lazy';preview.append(image);}else preview.append(icon('image'));
   const title=el('h3',d.title||d.productId);title.title=title.textContent;body.append(title);
   const prices=[...new Set((d.detailsPreview||[]).map(row=>row.price).filter(Boolean))];if(prices.length)body.append(el('div',prices.slice(0,3).join(' / '),'download-price'));
-  const meta=el('div',null,'download-meta');meta.append(icon('image'),el('span',`${d.images||0} JPEGs${d.rowCount!=null?` · ${d.rowCount} variations`:''}${d.warnings?.length?` · ${d.warnings.length} warnings`:''}`));body.append(meta);
+  const meta=el('div',null,'download-meta');meta.append(icon('image'),el('span',`${d.images||0} JPEGs${d.rowCount!=null?` · ${d.rowCount} variations`:''}${d.captureComplete===false?' · INCOMPLETE':''}${d.warnings?.length?` · ${d.warnings.length} warnings`:''}`));body.append(meta);
   body.append(el('p',Number.isNaN(Date.parse(d.capturedAt))?'':new Date(d.capturedAt).toLocaleString(),'download-time'));
   const details=dataPreview(d);if(details)body.append(details);
   const location=el('details',null,'archive-location');location.append(el('summary','File location'),el('p',d.path));body.append(location,command('Open folder','folder-open',()=>call('show',d.path)));

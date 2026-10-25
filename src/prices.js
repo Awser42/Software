@@ -31,6 +31,14 @@ function matches(state,targets,skuId) {
   if (skuId && state.selectedSkuId && String(state.selectedSkuId)!==String(skuId)) return false;
   return targets.every(target=>selectedTarget(state,target))&&new Set(targets.map(target=>findGroup(state,target))).size===state.groups.length;
 }
+function visiblePlan(state,plans){
+  const selected=plans.filter(plan=>matches(state,plan.targets,null));
+  // A complete, uniquely matching visible option set is authoritative. An
+  // unrelated/stale catalog SKU marker must not erase its size or hoop row.
+  if(selected.length===1)return selected[0];
+  const bySku=selected.filter(plan=>state.selectedSkuId&&String(plan.variant.skuId)===String(state.selectedSkuId));
+  return bySku.length===1?bySku[0]:null;
+}
 // A range is a product-level observation, not a price for one selected SKU.
 const singlePrice=value=>typeof value==='string' && /\d/.test(value) && !/\d\s*(?:-|–|—|~|to)\s*(?:[A-Z]{2,3}\s*)?[$€£¥₹]?\s*\d/i.test(value);
 function selectionTargets(state) {
@@ -46,8 +54,8 @@ function selectionTargets(state) {
 function selectionKey(targets) {
   return JSON.stringify(targets.map(t=>[t.groupId||normalized(t.groupName),t.valueId||normalized(t.valueName)]).sort((a,b)=>String(a[0]).localeCompare(String(b[0]))));
 }
-function assignObservation(variant,state) {
-  variant.displayedPrice=state.displayed;
+function assignObservation(variant,state,confirmed=true) {
+  if(confirmed)variant.displayedPrice=state.displayed;
   const targets=selectionTargets(state)||[];
   variant.observedOptions=targets.map(t=>({name:t.groupName,value:t.valueName,id:t.valueId,propertyId:t.groupId}));
   if (targets.length) variant.name=targets.map(t=>[t.groupName,t.valueName].filter(Boolean).join(': ')).join(' / ');
@@ -56,6 +64,7 @@ function assignObservation(variant,state) {
 async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=10000,onGate=async()=>{},onProgress=()=>{},maxObservedRows=200}={}) {
   product.warnings ||= []; product.prices ||= {}; product.variations ||= [];
   product.prices.mode='visible-variation';
+  product.prices.captureCoverage={confirmed:0,observed:0,complete:false};
   for (const variant of product.variations) { variant.displayedPrice=null; variant.observedOptions=[]; variant.observedImageUrls=[]; }
   const checkPage=state=>{
     if (product.productId && state.productId!==String(product.productId)) throw new Error('Product changed while reading visible variation prices. No price was assigned from a different page.');
@@ -132,6 +141,14 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
   // can be selected and then priced through the same freshness checks below.
   const canSeedSingle=!initial && snapshot.groups.length===1 && !snapshot.loading && !snapshot.groups[0].values.some(v=>v.selected);
   if (!initial && !canSeedSingle) {
+    const targets=selectionTargets(snapshot);
+    if(targets){
+      const candidates=product.variations.map(variant=>({variant,targets:targetsFor(variant,product.properties||[])}));
+      let variant=visiblePlan(snapshot,candidates)?.variant;
+      if(!variant&&!candidates.some(plan=>matches(snapshot,plan.targets,null))){variant={skuId:null,attributes:null,price:null,displayedPrice:null};product.variations.push(variant);}
+      if(variant)assignObservation(variant,snapshot,false);
+      product.prices.captureCoverage.observed=1;
+    }
     product.warnings.push('Visible current price did not settle. Hidden catalog prices were not substituted. Select required options in Chromium and retry if the product has no default selection.');
     return product;
   }
@@ -157,8 +174,8 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
         return {state:null,unavailable:false};
       }
     }
-    observed=observed||await waitStable(targets,skuId);
-    return {state:observed&&matches(observed,targets,skuId)&&singlePrice(observed.displayed)?observed:null,unavailable:false};
+    observed=observed||await waitStable(targets);
+    return {state:observed&&matches(observed,targets,null)&&singlePrice(observed.displayed)?observed:null,unavailable:false};
   };
   let plans=product.variations.map(variant=>({variant,targets:targetsFor(variant,product.properties||[])}));
   const rawVariants=product.variations;
@@ -180,9 +197,9 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
     }
   }
   if (initial) {
-    const initialMatches=plans.filter(plan=>matches(initial,plan.targets,plan.variant.skuId));
-    if (singlePrice(initial.displayed) && initialMatches.length===1) {
-      assignObservation(initialMatches[0].variant,initial);
+    const initialPlan=visiblePlan(initial,plans);
+    if (singlePrice(initial.displayed) && initialPlan) {
+      assignObservation(initialPlan.variant,initial);
       product.prices.displayedUnassigned=false;
     }
   }
@@ -190,40 +207,56 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
   // sizes that appear only after selecting another design. Explore the actual
   // UI even when the initial catalog appears complete.
   const discover=snapshot.groups.length>0;
+  const observedKeys=new Set(),confirmedKeys=new Set();let limited=false,scanFinished=false;
   try {
     if (discover && initial && selectionTargets(initial) && singlePrice(initial.displayed)) {
       // Walk the graph of real enabled UI choices. A candidate is never an
       // exported variation until its full selected state and price are read.
       const visited=new Set(); const limit=Math.min(200,Math.max(1,Number(maxObservedRows)||200));
-      let transitions=0,limited=false;
-      const record=state=>{
-        const targets=selectionTargets(state); if (!targets||!singlePrice(state.displayed)||state.loading) return false;
-        const key=selectionKey(targets); if (visited.has(key)) return false;
-        if (visited.size>=limit) { limited=true; return false; }
-        visited.add(key);
-        const existing=plans.filter(plan=>matches(state,plan.targets,null)),matching=existing.filter(plan=>matches(state,plan.targets,plan.variant.skuId));
-        let variant=matching.length===1?matching[0].variant:null;
-        if(!existing.length){variant={skuId:state.selectedSkuId||null,name:null,attributes:null,price:null,displayedPrice:null};product.variations.push(variant);}
-        if(variant){assignObservation(variant,state);if(key===selectionKey(selectionTargets(initial)))product.prices.displayedUnassigned=false;}
+      let transitions=0;
+      const selectedRows=new Map();
+      const record=(state,confirmed=true)=>{
+        const targets=selectionTargets(state); if (!targets||confirmed&&(!singlePrice(state.displayed)||state.loading)) return false;
+        const key=selectionKey(targets); if (confirmed&&visited.has(key)) return false;
+        if (!observedKeys.has(key)&&observedKeys.size>=limit) { limited=true; return false; }
+        observedKeys.add(key);if(confirmed)visited.add(key);
+        const existing=plans.filter(plan=>matches(state,plan.targets,null));
+        let variant=selectedRows.get(key)||visiblePlan(state,plans)?.variant||null;
+        if(!variant&&!existing.length){variant={skuId:state.selectedSkuId||null,name:null,attributes:null,price:null,displayedPrice:null};product.variations.push(variant);}
+        if(variant){selectedRows.set(key,variant);assignObservation(variant,state,confirmed);if(confirmed){confirmedKeys.add(key);if(key===selectionKey(selectionTargets(initial)))product.prices.displayedUnassigned=false;}}
         return true;
       };
       record(initial);
       const walk=async state=>{
         const parent=selectionTargets(state); if (!parent||halted||limited) return;
-        const choices=state.groups.flatMap(group=>group.values.filter(value=>!value.selected&&!value.disabled).map(value=>({groupId:group.id,groupName:group.name,valueId:value.id,valueName:value.name})));
-        for (const choice of choices) {
+        let currentState=state,emptyPasses=0;const tried=new Set();
+        while(true){
           if (halted||limited) return;
-          const predicted=parent.map(target=>findGroup(state,target)===findGroup(state,choice)?choice:target);
-          if(visited.has(selectionKey(predicted)))continue;
+          const choices=currentState.groups.flatMap(group=>group.values.filter(value=>!value.selected&&!value.disabled).map(value=>({groupId:group.id,groupName:group.name,valueId:value.id,valueName:value.name})));
+          const choice=choices.find(choice=>{const predicted=parent.map(target=>findGroup(currentState,target)===findGroup(currentState,choice)?choice:target);const key=selectionKey(predicted);return !visited.has(key)&&!tried.has(key);});
+          if(!choice){
+            if(emptyPasses++)return;
+            // SKU controls can appear after the price settles, or after a child
+            // design has been restored. Re-read real controls before finishing.
+            await queue.checkpoint();await onGate();await page.waitForTimeout(Math.max(500,Math.min(settleMs,2000)));
+            const fresh=await readPriceState(page);checkPage(fresh);
+            if(!matches(fresh,parent,null)){halted=true;product.warnings.push('Selected options changed during the final variation rescan; the capture is incomplete.');return;}
+            currentState=fresh;continue;
+          }
+          emptyPasses=0;
+          const predicted=parent.map(target=>findGroup(currentState,target)===findGroup(currentState,choice)?choice:target);
+          tried.add(selectionKey(predicted));
           if (++transitions>limit*12) { limited=true; return; }
           const current=await readPriceState(page); checkPage(current);
           const group=findGroup(current,choice); const value=group?.values.find(v=>sameValue(v,choice));
-          if (!value||value.disabled) continue;
+          if (!value||value.disabled){currentState=current;tried.delete(selectionKey(predicted));continue;}
           onProgress(`Reading observed variation ${visited.size} (up to ${limit})`);
           await beginPriceObservation(page);
-          if (!await selectObservedValue(page,choice)) continue;
+          if (!await selectObservedValue(page,choice)){halted=true;product.warnings.push('A visible variation option could not be selected; the size/hoop capture is incomplete. Run this link again.');return;}
           const observed=await waitStable(null,null,current,choice);
           if (!observed) {
+            const unconfirmed=await readPriceState(page);checkPage(unconfirmed);
+            if(selectedTarget(unconfirmed,choice))record(unconfirmed,false);
             halted=true;
             product.warnings.push('A discovered option change did not produce a confirmed fresh price; further discovery stopped to avoid misattributing late updates.');
             return;
@@ -238,9 +271,11 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
             product.warnings.push('The previous option combination could not be restored and confirmed; further variation discovery stopped.');
             return;
           }
+          currentState=restored.state;
         }
       };
       await walk(initial);
+      scanFinished=!halted&&!limited;
       if (limited) product.warnings.push(`Variation discovery stopped at its safety limit (${visited.size} confirmed rows, maximum ${limit}). Only actual observed combinations were exported; additional combinations may remain.`);
     } else {
       for (let index=0;index<plans.length;index++) {
@@ -253,7 +288,7 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
         if (!before.selectedSkuId && plans.filter(p=>JSON.stringify(p.targets)===JSON.stringify(targets)).length>1) continue;
         const result=await selectTargets(targets,variant.skuId);
         if (halted) break;
-        if (result.state) assignObservation(variant,result.state);
+        if (result.state&&visiblePlan(result.state,plans)?.variant===variant) assignObservation(variant,result.state);
       }
     }
   } finally {
@@ -263,6 +298,11 @@ async function captureVisiblePrices(page,product,queue,{settleMs=700,timeoutMs=1
       await selectObservedValue(page,target).catch(()=>false);
     }
   }
+  for(const variant of product.variations){if(!variant.observedOptions?.length)continue;const key=selectionKey(variant.observedOptions.map(option=>({groupId:option.propertyId,groupName:option.name,valueId:option.id,valueName:option.value})));observedKeys.add(key);if(variant.displayedPrice)confirmedKeys.add(key);}
+  if(!discover&&!product.variations.length&&!product.properties?.some(property=>property.values?.length))scanFinished=true;
+  const complete=scanFinished&&!halted&&!limited&&observedKeys.size===confirmedKeys.size;
+  product.prices.captureCoverage={confirmed:confirmedKeys.size,observed:observedKeys.size,complete};
+  if(!complete)product.warnings.push(`Variation capture is incomplete: ${confirmedKeys.size} of ${observedKeys.size} selected combinations have confirmed prices. Additional size/hoop choices may remain; run this link again.`);
   if(useObservedUI&&!product.variations.length)product.variations=rawVariants;
   const missing=plans.filter(p=>p.variant.displayedPrice===null).length;
   if (missing) product.warnings.push(`${missing} variation price(s) could not be confirmed in the visible current-price panel; their Excel prices are blank.`);
